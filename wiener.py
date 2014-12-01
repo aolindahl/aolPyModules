@@ -23,5 +23,5 @@ def deconvolution(signal, SNR, response=None):
         R = 1
     else:
         R = fft(response)
-    return real(ifft( conj(R) * SNR  / ( abs(R)**2 * SNR  + 1 ) * fft(signal[:])))
+    return real(ifft( conj(R)  / ( abs(R)**2  + 1./SNR ) * fft(signal[:])))
     
