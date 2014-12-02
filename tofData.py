@@ -33,11 +33,11 @@ class tofData(object):
         """
         
         # Extract the data source
-        self._source = psana.Source(config.tof_source)
+        self._source = psana.Source(config['detectorSource'])
         # Extract the acqiris channel
-        self._acqCh = config.tof_acqCh
+        self._acqCh = config['acqCh']
         # Load the callibration file pointed to in the configuration
-        self._calib = loadConfig(config.tof_calibFile, quiet=quiet)
+        self._calib = loadConfig(config['calibFile'], quiet=quiet)
                                           
         # Store the configuration
         self._config = config
@@ -56,18 +56,33 @@ class tofData(object):
 
         self._quiet = quiet
 
-        if hasattr(self._config, 'tof_filterMethod'):
-            if self._config.tof_filterMethod == "wienerDeconv":
+        if 'filterMethod' in self._config.keys():
+            if self._config['filterMethod'] == "wienerDeconv":
                 self.filterTimeDomainData(method='wienerDeconv',
-                        SNR=self._config.tof_filterWienerSNR,
-                        response=self._config.tof_filterWienerResponse)
+                        SNR=self._config['filterWienerSNR'],
+                        response=self._config['filterWienerResponse'])
+            elif self._config['filterMethod'] == 'wavelet':
+                self.filterTimeDomainData(method='wavelet',
+                        levels=self._config["filterWaveletLevels"])
+            elif self._config['filterMethod'] == 'average':
+                if not self._quiet:
+                    print 'Using averaging with {} points'.format(
+                            self._config['filterAverageNumPoints'])
+                self.filterTimeDomainData(method='average',
+                        numPoints=self._config['filterAverageNumPoints'])
 
-        if 'tof_timeRoi' in config.members():
-            pass
-    
+
+        self._timeAmplitude = None
+        self._timeRoiSlice = [None, None]
+        self._energyRoiSlice =[None, None]
+
+        self._bgWeight = None
+
+
+
     def setupScales(self, env=None, 
                     energyAxisBinLimits=np.linspace(800, 1000, 129),
-                    timeScale=None):
+                    timeScale=None, retardation=0):
         """\
         Setup the information about the acqiris channel used for the TOF.
         
@@ -112,11 +127,13 @@ class tofData(object):
             self._timeScale_us = np.arange(t0, dt*nSample, dt)*1e6
 
             # If only a slice of the time should be used
-            if self._config.tof_tSlice: 
+            if self._config['tSlice']: 
                 # Define the time slice for the configuration
                 self._timeSlice = slice(
-                        np.searchsorted(self._timeScale_us, self._config.tof_tMin_us),
-                        np.searchsorted(self._timeScale_us, self._config.tof_tMax_us))
+                        np.searchsorted(self._timeScale_us,
+                            self._config['tMin_us']),
+                        np.searchsorted(self._timeScale_us,
+                            self._config['tMax_us']))
                 self._timeScale_us = self._timeScale_us[self._timeSlice]
             else:
                 self._timeSlice = slice(None)
@@ -158,7 +175,8 @@ class tofData(object):
         eEdges = (self._calib.D_mm**2 * m_e_eV * 1e6 
                 / (c_0_mps**2 * 2 * (tEdges - self._calib.prompt_us
                     - self._calib.tOffset_us)**2)
-                + self._calib.EOffset_eV)
+                + self._calib.EOffset_eV - self._calib.EOffsetRetardation *
+                retardation)
 
 
 
@@ -193,7 +211,7 @@ class tofData(object):
         tempMat[I] = dt * (highE[I] - lowE[I]) / ( Me[:,:-1] - Me[:,1:] )[I] / dE
         # The conversion matrix is highly sparse, thus make a sparse matrix to
         # spped up the calculationss
-        self._timeToEnergyConversionMatrix = coo_matrix(tempMat)
+        self._timeToEnergyConversionMatrix = coo_matrix(tempMat)*1e9
 
         
         #plt.figure(111); plt.clf()
@@ -238,18 +256,69 @@ class tofData(object):
         # get the energy bin size
         self._energyBinSize = self._energyScale_eV[1] - self._energyScale_eV[0]
 
+        # Set the region of interest slices
+        if not self._quiet:
+            print 'Looking for ROIs'
+        for domain, roiBase in zip(
+                ['Time', 'Energy'],
+                ['timeRoi{}_us', 'energyRoi{}_eV']):
+            for iRoi in range(2):
+                roi = roiBase.format(iRoi) 
+                if roi in self._config:
+                    if not self._quiet:
+                        print '\t{} found'.format(roi)
+                        print self._config[roi]
+                    self.setBaseRoi(
+                            min = self._config[roi][0],
+                            max = self._config[roi][1],
+                            roi = iRoi,
+                            domain = domain)
+
+
         # Make a backgeound slice
-        self._bgSlice = slice(
-                self._timeScale_us.searchsorted(self._config.tof_bgTo_us) )
-        #Check if there is actually somethingto calculate the background from
+        if self._config['baselineSubtraction'] == 'early':
+            self._bgSlice = slice(self._timeScale_us.searchsorted(
+                        self._config['baselineEnd_us']))
+        elif self._config['baselineSubtraction'] == 'roi':
+            try:
+                self._bgSlice = slice(
+                        min( [i.stop for i in self._timeRoiSlice] ),
+                        max( [i.start for i in self._timeRoiSlice] ) )
+            except:
+                print "Could not set the gsSlice from the roi's."
+                print "Attempted slice({}, {})".format(
+                        min( [i.stop for i in self._timeRoiSlice] ),
+                        max( [i.start for i in self._timeRoiSlice] ) )
+                self._bgSlice = slice(0,0)
+        else:
+                self._bgSlice = slice(0,0)
+
+        # Check if there is actually something to calculate the background
+        # from
         if len(self._timeScale_us[self._bgSlice]) < 1:
-            self._config.tof_bg = False
+            self._config['baselineSubtraction'] = 'none'
+
+
 
         self._noScales = False
 
+    def setBaseRoi(self, min, max, roi=0, domain='Time'):
+        if domain=='Time':
+            a = self._timeScale_us.searchsorted(min)
+            b = a + self._timeScale_us[a:].searchsorted(max)
+            self._timeRoiSlice[roi] = slice(a,b)
+        elif domain=='Energy':
+            a = self._energyScale_eV.searchsorted(min)
+            b = a + self._energyScale_eV[a:].searchsorted(max)
+            self._energyRoiSlice[roi] = slice(a,b)
+
+    def setBaselineSubtractionAveraging(self, weightLast):
+        self._bgWeightLast = weightLast
+        self._bgWeightHistory = 1-weightLast
+        self._bgHistory = None
             
             
-    def setRawData(self, evt=None, timeAmplitude_V=None):
+    def setRawData(self, evt=None, timeAmplitude_V=None, newDataFactor=None):
         """\
         Set waveform data and compute the scaled data.\
         """
@@ -274,13 +343,31 @@ class tofData(object):
                 return
         
             # If everything worked out calculate the rescaled amplitude
-            self._timeAmplitude = -(
-                    acqirisData.data(self._acqCh).waveforms()[0][self._timeSlice] 
+            new = -(acqirisData.data(self._acqCh).waveforms()[0][self._timeSlice] 
                     * self._acqVertScaling - self._acqVertOffset)
 
+            if (self._timeAmplitude is None or newDataFactor == 1 or
+                    newDataFactor is None):
+                self._timeAmplitude = new
+            else:
+                self._timeAmplitude = (self._timeAmplitude * (1.0-newDataFactor)
+                        + new * newDataFactor)
+
             # If set up to do that, subtract the baseline 
-            if self._config.tof_bg:
-                self._timeAmplitude -= np.mean(self._timeAmplitude[self._bgSlice])
+            if self._config['baselineSubtraction'] != 'none':
+                if self._bgWeight is None:
+                    self._timeAmplitude -= \
+                            self._timeAmplitude[self._bgSlice].mean()
+                else:
+                    if self._bgHistory is None:
+                        self._bgHistory =  \
+                                self._timeAmplitude[self._bgSlice].mean()
+                    else:
+                        self._bgHistory *= self._bgWeightHistory
+                        self._bgHistory += self._bgWeightLast \
+                                * self._timeAmplitude[self._bgSlice].mean()
+
+                    self._timeAmplitude -= self._bgHistory
 
         elif timeAmplitude_V is  None:
             if not self._quiet:
@@ -310,36 +397,48 @@ class tofData(object):
         return
 
 
-    def getTimeScale_us(self):
+    def getTimeScale_us(self, roi=None):
         if self._noScales:
             return None
+        if roi!=None and self._timeRoiSlice!=None:
+            return self._timeScale_us[self._timeRoiSlice[roi]]
         return self._timeScale_us
         
-    def getTimeAmplitude(self):
+    def getTimeAmplitude(self, roi=None):
         if self._noData:
             return None
+        if roi!=None and self._timeRoiSlice!=None:
+            return self._timeAmplitude[self._timeRoiSlice[roi]]
         return self._timeAmplitude
 
-    def getTimeAmplitudeFiltered(self):
+    def getTimeAmplitudeFiltered(self, roi=None):
         if self._noData:
             return None
+        if roi!=None: #and self._timeRoiSlice!=None:
+            return self._timeAmplitudeFiltered[self._timeRoiSlice[roi]]
         return self._timeAmplitudeFiltered
 
-    def getEnergyAmplitude(self):
+    def getEnergyAmplitude(self, roi=None):
         if self._noData:
             return None
         if self._noData:
             return None
+        if roi!=None and self._energyRoiSlice!=None:
+            return self._energyAmplitude[self._energyRoiSlice[roi]]
         return self._energyAmplitude
         
-    def getEnergyScale_eV(self):
+    def getEnergyScale_eV(self, roi=None):
         if self._noScales:
             return None
+        if roi!=None and self._energyRoiSlice!=None:
+            return self._energyScale_eV[self._energyRoiSlice[roi]]
         return self._energyScale_eV
 
-    def getRawEnergyScale(self):
+    def getRawEnergyScale(self, roi=None):
         if self._noScales:
             return None
+        if roi!=None and self._timeRoiSlice!=None:
+            return self._energyScale_eV[self._timeRoiSlice[roi]]
         return self._rawEnergyScale_eV
         
     def filterTimeDomainData(self, method='wienerDeconv', numPoints=4, levels=6,
@@ -372,7 +471,8 @@ class tofData(object):
         if self._filterMethod == 'average':
             self._timeAmplitudeFiltered = \
                     np.convolve(self._timeAmplitude,
-                            np.ones((self._filterNumPoints,))/self._filterNumPoints, mode='same')
+                            np.ones((self._filterNumPoints,))
+                            / self._filterNumPoints, mode='same')
             return
 
         if self._filterMethod == 'wavelet' and useWavelet:
@@ -386,8 +486,8 @@ class tofData(object):
                     self._timeAmplitude, self._SNR, self._response)
             return
 
-        print '%s is not a valid filtering method when "useWavelet" is %s.' \
-                % (method, useWavelet)
+        print '{} is not a valid filtering method when "useWavelet" is {}.'\
+                .format(self._filterMethod, useWavelet)
 
 
     def getTraceBounds(self, threshold_V=0.02, minWidth_eV=2, EnergyOffset=0, useRel=False,
@@ -448,6 +548,25 @@ class tofData(object):
 
         return dur
 
+    def getMoments(self, domain='Time', roi=None):
+        if domain == 'Time':
+            x = self.getTimeScale_us(roi=roi)
+            y = self.getTimeAmplitudeFiltered(roi=roi)
+        elif domain == 'Energy':
+            x = self.getEnergyScale_eV(roi=roi)
+            y = self.getEnergyAmplitude(roi=roi)
+        else:
+            print 'Error: {} is not a valid domain'.format(domain)
+            return None
+        
+        if y.sum() == 0:
+            return np.nan, np.nan
+
+        center = np.average(x, weights=y)
+        width = np.sqrt( np.average((x-center)**2, weights=y-y.min()) )
+
+        return center, width
+
 
         
 def psanaTester():
@@ -459,20 +578,19 @@ def psanaTester():
 
 
     # Load the config file
-    config = \
-            loadConfig('/reg/neh/home/alindahl/amoc8114/configFiles/configTofDataModuleTester.json')
+    import cookieBoxDefaultConfig as config
     # Create the sender, but only if zmq should be used
-    if config.zmq:
+    if config.useZmq:
         sender = zmqSender()
     else:
         plt.ion() 
 
     # Create the tofData object
-    tof = tofData(config, quiet=False)    
+    tof = tofData(config.basicTofConfig, quiet=False)    
     tof.filterTimeDomainData(method='wavelet', numPoints=4)
     
-    EMin = config.tof_minE_eV
-    EMax = config.tof_maxE_eV
+    EMin = config.minE_eV
+    EMax = config.maxE_eV
     threshold = 0.02
     minWidth_eV = 3
     yValuesBar = np.array((0,2,1,1,2,0,1,1,2,0))
@@ -490,7 +608,7 @@ def psanaTester():
         if num is 0:
             #Initialize the scalse
             tof.setupScales(ds.env(), np.linspace(EMin, EMax,
-                config.tof_nEnergyBins))
+                config.nEnergyBins))
             # Get the x scales
             t = tof.getTimeScale_us()
             E = tof.getEnergyScale_eV()
@@ -530,7 +648,7 @@ def psanaTester():
         a1.relim()
         a1.autoscale_view(scalex=False)
 
-        l21.set_ydata(tAmp)
+        l21.set_ydata(tAmpF)
         l22.set_ydata(EAmp)
         l23.set_ydata(yValuesBar*th)
         l23.set_xdata(xValuesBar)
@@ -540,23 +658,25 @@ def psanaTester():
         f1.canvas.draw()
     
         # Remote plotting
-        packet = []
-        if num is 0:
-            plot1 = linePlot((line(t, tAmpRaw),
-                line(t, tAmp)))
-            plot2 = linePlot((line(E, EAmp), line(xValuesBar, yValuesBar*th)))
-        else:
-            plot1 = linePlot((line(y=tAmpRaw), line(y=tAmp)))
-            plot2 = linePlot((line(y=EAmp), line(x=xValuesBar, y=yValuesBar*th)))
+        if config.useZmq:
+            packet = []
+            if num is 0:
+                plot1 = linePlot((line(t, tAmpRaw),
+                    line(t, tAmpF)))
+                plot2 = linePlot((line(E, EAmp), line(xValuesBar, yValuesBar*th)))
+            else:
+                plot1 = linePlot((line(y=tAmpRaw), line(y=tAmpF)))
+                plot2 = linePlot((line(y=EAmp), line(x=xValuesBar, y=yValuesBar*th)))
             
-        packet.append(plot1)
-        packet.append(plot2)
-        sender.sendObject(packet)
+            packet.append(plot1)
+            packet.append(plot2)
+            sender.sendObject(packet)
 
         time.sleep(1)
 
     raw_input('Press enter to exit...')
-    del sender
+    if config.useZmq:
+        del sender
 
 
 
@@ -672,5 +792,5 @@ def nonPsanaTester():
 
 
 if __name__ == '__main__':
-    #psanatester()
-    nonPsanaTester()
+    psanaTester()
+    #nonPsanaTester()

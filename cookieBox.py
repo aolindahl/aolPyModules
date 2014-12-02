@@ -1,5 +1,5 @@
 import numpy as np
-import tofData2 as tofData
+import tofData
 from configuration import loadConfiguration as loadConfig
 from aolUtil import struct
 import sys
