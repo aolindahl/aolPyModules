@@ -1,25 +1,31 @@
 import numpy as np
+import aolUtil
 
 
 # Define the basic configuration
 basicTofConfig = {
-    "acqCh": 1, 
-    "baselineSubtraction":'roi',
+    "acqCh": 10, 
+    "baselineSubtraction":"early", # 'early', 'roi', 'none' 
     "baselineEnd_us": 1.5, 
-    "calibFile": "/reg/neh/home/alindahl/pythonModules/tofCalibDefault.json", 
+    "calibFile": ("/reg/neh/operator/amoopr/"
+		    + "amoi0114/psana/tofCalibs/tofCalibRetardation.json"), 
     "filterMethod": "none", # wavelet, average, wienerDeconv 
-    "filterWaveletLevels": 100, 
+    "filterWaveletLevels": 10, 
     "filterWinerSNR": 1,
     "filterWinerResponse":1,
-    "filterAverageNumPoints":100,
+    "filterAverageNumPoints":4,
     "detectorSource": "DetInfo(AmoETOF.0:Acqiris.0)", 
-    #"tMax_us": 2.5, 
-    #"tMin_us": 1, 
-    "tMax_us": 1.57, 
+    "tMax_us": 1.6, 
     "tMin_us": 1.48, 
     "tSlice": True 
 }
 
+lclsConfig = {
+	'lcls_photonEnergyA':1,
+	'lcls_photonEnergyB':1}
+lclsConfig = aolUtil.struct(lclsConfig)
+
+retardationPV = 'AMO:R14:IOC:10:VHS0:CH0:VoltageMeasure'
 
 # Acqiris channel asignment
 acqCh = {
@@ -41,21 +47,17 @@ acqCh = {
         15:15
         }
 
-timeRoi0_us_common = [1.533, 1.539]
+timeRoi0_us_common = [1.522, 1.538]	#red
+timeRoi0_us = [timeRoi0_us_common]*16
 
-if timeRoi0_us_common is not None:
-        timeRoi0_us = {}
-        for i in range(16):
-                timeRoi0_us[i] = timeRoi0_us_common
+timeRoi0Bg_us_common = [1.5, 1.51]
+timeRoi0Bg_us = [timeRoi0Bg_us_common]*16
 
+timeRoi1_us_common = [1.515, 1.522]	#green
+timeRoi1_us = [timeRoi1_us_common]*16
 
-timeRoi1_us_common = [1.515, 1.521]
-
-if timeRoi1_us_common is not None:
-	timeRoi1_us = {}
-	for i in range(16):
-		timeRoi1_us[i] = timeRoi1_us_common
-
+energyRoi0_eV_common = [40, 60]
+energyRoi0_eV = [energyRoi0_eV_common]*16
 
 
 
@@ -66,22 +68,28 @@ def makeTofConfigList(online=True):
     global tofConfigList
     for i in range(16):
         tofConfigList[i] = basicTofConfig.copy()
-        tofConfigList[i]['timeRoi0_us'] = timeRoi0_us[i]
-        tofConfigList[i]['timeRoi1_us'] = timeRoi1_us[i]
-        if online:
+	tofConfigList[i]['calibFile'] = ('/reg/neh/operator/amoopr/'
+		    + 'amoi0114/psana/tofCalibs/tof{}Calib.json'.format(i+1)) 
+	if online:
             tofConfigList[i]['acqCh'] = acqCh[i]
 
 makeTofConfigList(online=True)
 
 minE_eV = 50
 maxE_eV = 1000
-nEnergyBins = 1024
+nEnergyBins = 256
 
-energyScaleBinLimits = np.linspace(minE_eV, maxE_eV, nEnergyBins+1)
+energyScaleBinLimits = np.linspace(minE_eV, maxE_eV, nEnergyBins + 1)
 
-fitMask = np.array([0,1, 2, 3, 4,5,6,7,8,9,10,11,12,13,14,15])
-#fitMask = np.array([0,1, 2, 3, 4,5,6,7,9,10,11,12,13,14,15])
 
+fitMask = np.array([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+#fitMask = np.array([0,1,2,3,4,5,6, 8,9,10,11, 13,14,15])
+#fitMask = np.array([0,1,2,3,5,6,7,8,9,10,11,13,14,15])
+
+boolFitMask = np.array([i in fitMask for i in range(16)])
+nanFitMask = np.array([1 if b else np.nan for b in boolFitMask])
+
+offlineSource = 'exp=amoi0114:run=144'
 
 # For CookieBox class debugging
 domainToDisplay = 'Time'
