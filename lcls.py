@@ -21,7 +21,7 @@ _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
 
 _evt = None
 
-def setEvnet(evt, verbose=False):
+def setEvent(evt, verbose=False):
     global _evt
     if verbose:
         print 'Updating the internal event.'
@@ -39,11 +39,11 @@ def _checkEvent(evt, verbose=False):
         return False
     return True
 
+# e-beam data
 def getEBeamEnergyL3_MeV(evt=None, verbose=False):
-    print verbose
     if not _checkEvent(evt, verbose):
         return np.nan
-    EBeamObject = getEBeamObject(verbose)
+    EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamL3Energy()
@@ -51,7 +51,7 @@ def getEBeamEnergyL3_MeV(evt=None, verbose=False):
 def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
     if not _checkEvent(evt):
         return np.nan
-    EBeamObject = getEBeamObject(verbose)
+    EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
         return np.nan
     # The BC2 energy is calculated using the dispersion. The vispersion
@@ -62,7 +62,7 @@ def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
 def getEBeamCharge_nC(evt=None, verbose=False):
     if not _checkEvent(evt):
         return np.nan
-    EBeamObject = getEBeamObject(verbose)
+    EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamCharge()
@@ -70,27 +70,32 @@ def getEBeamCharge_nC(evt=None, verbose=False):
 def getEBeamPkCurrentBC2_A(evt=None, verbose=False):
     if not _checkEvent(evt):
         return np.nan
-    EBeamObject = getEBeamObject(verbose)
+    EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamPkCurrBC2()
 
-def getEBeamObject(verbose=False):
+# e-beam setup
+def getEBeamObject(evt=None, verbose=False):
+    if not _checkEvent(evt, verbose):
+        return None
     # Initialize the EBeam type
     if _EBeamType is None:
         if verbose:
             print 'Initializing the EBeam type.'
-        _determineEBeamType(evt, verbose=verbose)
+        _determineEBeamType(verbose=verbose)
     return _evt.get(_EBeamType, _EBeamSource)
 
-def _determineEBeamType(evt, verbose=False):
+def _determineEBeamType(evt=None, verbose=False):
     global _EBeamType
+    if not _checkEvent(evt, verbose):
+        return None
     if verbose:
         print 'Find the correct EBeam type.'
     for type in EBeamTypeList:
         if verbose:
             print 'Trying {};'.format(type),
-        data = evt.get(type, _EBeamSource)
+        data = _evt.get(type, _EBeamSource)
         if data is not None:
             _EBeamType = type
             if verbose:
@@ -99,6 +104,9 @@ def _determineEBeamType(evt, verbose=False):
         elif verbose:
             print ' wrong one.'
 
+    return _EBeamType
+
+# fee
 def getPulseEnergy_mJ(evt=None, verbose=False):
     if not _checkEvent(evt):
         return np.nan
@@ -131,13 +139,36 @@ def _determineFeeType(evt, verbose=False):
         elif verbose:
             print ' wrong one.'
 
+
+# Event id
+def getIdObject(evt, verbose=False):
+    return evt.get(psana.EventId)
+
+def getEventFiducial(evt=None, verbose=False):
+    if not _checkEvent(evt, verbose):
+        return 0
+    id = getIdObject(_evt, verbose)
+    if id == None:
+        return 0
+    return id.fiducials()
+
+def getEventTime(evt=None, verbose=False):
+    if not _checkEvent(evt, verbose):
+        return np.nan
+    id = getIdObject(_evt, verbose)
+    if id == None:
+        return np.nan
+    time =  id.time()
+    return time[0] + time[1] * 1e-9
+
+
 if __name__ == '__main__':
     print 'Connecting to data source.'
     ds = psana.DataSource('exp=amoc8114:run=24')
     print 'Geting an event.'
     evt = ds.events().next()
     print 'Set the event'
-    setEvnet(evt, verbose=True)
+    setEvent(evt, verbose=True)
     print 'E at L3 is {} MeV'.format(getEBeamEnergyL3_MeV(verbose=True))
     print 'E at BC2 is {} MeV'.format(getEBeamEnergyBC2_MeV(verbose=True))
     print 'Q is {} nC'.format(getEBeamCharge_nC(verbose=True))
