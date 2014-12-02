@@ -19,14 +19,39 @@ feeTypeList = (psana.Bld.BldDataFEEGasDetEnergy,
 _feeType = None
 _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
 
-def getEBeamEnergyL3_MeV(evt, verbose=False):
-    EBeamObject = getEBeamObject(evt, verbose)
+_evt = None
+
+def setEvnet(evt, verbose=False):
+    global _evt
+    if verbose:
+        print 'Updating the internal event.'
+    _evt = evt
+
+def _checkEvent(evt, verbose=False):
+    if evt is not None:
+        if verbose:
+            print 'Event given.'
+        setEvent(evt, verbose)
+        return True
+    if _evt is None:
+        if verbose:
+            print 'Internal event empty.'
+        return False
+    return True
+
+def getEBeamEnergyL3_MeV(evt=None, verbose=False):
+    print verbose
+    if not _checkEvent(evt, verbose):
+        return np.nan
+    EBeamObject = getEBeamObject(verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamL3Energy()
 
-def getEBeamEnergyBC2_MeV(evt, verbose=False):
-    EBeamObject = getEBeamObject(evt, verbose=verbose)
+def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
+    if not _checkEvent(evt):
+        return np.nan
+    EBeamObject = getEBeamObject(verbose)
     if EBeamObject == None:
         return np.nan
     # The BC2 energy is calculated using the dispersion. The vispersion
@@ -34,23 +59,29 @@ def getEBeamEnergyBC2_MeV(evt, verbose=False):
     # from Timothy Maxwell to Anton Lindahl on June 2 2014]
     return ( EBeamObject.ebeamEnergyBC2() / -364.7 + 1 ) * 5e3
 
-def getEBeamCharge_nC(evt, verbose=False):
-    EBeamObject = getEBeamObject(evt, verbose)
+def getEBeamCharge_nC(evt=None, verbose=False):
+    if not _checkEvent(evt):
+        return np.nan
+    EBeamObject = getEBeamObject(verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamCharge()
 
-def getEBeamPkCurrentBC2_A(evt, verbose=False):
-    EBeamObject = getEBeamObject(evt, verbose)
+def getEBeamPkCurrentBC2_A(evt=None, verbose=False):
+    if not _checkEvent(evt):
+        return np.nan
+    EBeamObject = getEBeamObject(verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamPkCurrBC2()
 
-def getEBeamObject(evt, verbose=False):
+def getEBeamObject(verbose=False):
     # Initialize the EBeam type
     if _EBeamType is None:
+        if verbose:
+            print 'Initializing the EBeam type.'
         _determineEBeamType(evt, verbose=verbose)
-    return evt.get(_EBeamType, _EBeamSource)
+    return _evt.get(_EBeamType, _EBeamSource)
 
 def _determineEBeamType(evt, verbose=False):
     global _EBeamType
@@ -68,8 +99,10 @@ def _determineEBeamType(evt, verbose=False):
         elif verbose:
             print ' wrong one.'
 
-def getPulseEnergy_mJ(evt):
-    fee = getFeeObject(evt)
+def getPulseEnergy_mJ(evt=None, verbose=False):
+    if not _checkEvent(evt):
+        return np.nan
+    fee = getFeeObject(_evt, verbose)
     if fee is None:
         return np.array([np.nan for i in range(4)])
     return np.array( [ fee.f_11_ENRC(),
@@ -99,15 +132,15 @@ def _determineFeeType(evt, verbose=False):
             print ' wrong one.'
 
 if __name__ == '__main__':
+    print 'Connecting to data source.'
     ds = psana.DataSource('exp=amoc8114:run=24')
+    print 'Geting an event.'
     evt = ds.events().next()
-    print 'E at L3 is {} MeV'.format(getEBeamEnergyL3_MeV(evt,
-        verbose=True))
-    print 'E at BC2 is {} MeV'.format(getEBeamEnergyBC2_MeV(evt,
-        verbose=True))
-    print 'Q is {} nC'.format(getEBeamCharge_nC(evt,
-        verbose=True))
-    print 'I is {} A'.format(getEBeamPkCurrentBC2_A(evt,
-        verbose=True))
-    print 'fee is {} mJ'.format(getPulseEnergy_mJ(evt))
+    print 'Set the event'
+    setEvnet(evt, verbose=True)
+    print 'E at L3 is {} MeV'.format(getEBeamEnergyL3_MeV(verbose=True))
+    print 'E at BC2 is {} MeV'.format(getEBeamEnergyBC2_MeV(verbose=True))
+    print 'Q is {} nC'.format(getEBeamCharge_nC(verbose=True))
+    print 'I is {} A'.format(getEBeamPkCurrentBC2_A(verbose=True))
+    print 'fee is {} mJ'.format(getPulseEnergy_mJ(verbose=True))
 
