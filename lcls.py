@@ -164,7 +164,7 @@ def getIdObject(evt, verbose=False):
     return evt.get(psana.EventId)
 
 def getEventFiducial(evt=None, verbose=False):
-    if not _checkEvent(evt, verbose):
+    if not setEvent(evt, verbose):
         return 0
     id = getIdObject(_evt, verbose)
     if id == None:
@@ -172,7 +172,7 @@ def getEventFiducial(evt=None, verbose=False):
     return id.fiducials()
 
 def getEventTime(evt=None, verbose=False):
-    if not _checkEvent(evt, verbose):
+    if not setEvent(evt, verbose):
         return np.nan
     id = getIdObject(_evt, verbose)
     if id == None:
@@ -197,7 +197,7 @@ def getEvrObject(evt=None, evrSource=_evrSource, verbose=False):
         return None
     if _evrType is None:
         _determineEvrTypa(_evt, verbose)
-    return evt.get(_evrType, evrSource)
+    return _evt.get(_evrType, evrSource)
 
 def _determineEvrType(evt, verbose=False):
     global _evrType
@@ -216,7 +216,7 @@ def _determineEvrType(evt, verbose=False):
             print ' wrong one.'
 
 
-def getEvrCodes(evt, verbose=False):
+def getEvrCodes(evt=None, verbose=False):
     evrData = getEvrObject(evt, verbose=verbose)
     if evrData is None:
         if verbose:
@@ -224,7 +224,7 @@ def getEvrCodes(evt, verbose=False):
         return []
     return [fifo.eventCode() for fifo in evrData.fifoEvents()]
 
-def evrCodeInEvent(evt, evr, verbose=False):
+def evrCodeInEvent(evr, evt=None, verbose=False):
     if verbse:
         print 'Checking for EVR codes.'
     return evr in getEvrCodes(evt, verbose=verbose)
