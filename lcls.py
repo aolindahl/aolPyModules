@@ -20,28 +20,47 @@ _feeType = None
 _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
 
 _evt = None
+_currentFiducial = None
 
 def setEvent(evt, verbose=False):
     global _evt
-    if verbose:
-        print 'Updating the internal event.'
-    _evt = evt
+    global _currentFiducial
 
-def _checkEvent(evt, verbose=False):
-    if evt is not None:
+    if verbose:
+        print 'Trying to det event.'
+
+    # If no event is given
+    if evt is None:
+        # And ther is no event set already
+        if _evt is None:
+            if verbose:
+                print 'No event set.'
+            return False
+        #Use old event if there is one
+        else:
+            if verbose:
+                print 'No new event given, using old event.'
+            return True
+
+    # If a new event is given check if it is the same as the old one using the
+    # fiducial
+    newFid = evt.get(psana.EventId).fiducials()
+    # If it is not the same as the old one
+    if newFid != _currentFiducial:
         if verbose:
-            print 'Event given.'
-        setEvent(evt, verbose)
+            print 'Updating the internal event.'
+        # Update the infomation
+        _evt = evt
+        _currentFiducial = newFid
         return True
-    if _evt is None:
-        if verbose:
-            print 'Internal event empty.'
-        return False
+    elif verbose:
+        print 'Event already up to date.'
+
     return True
 
 # e-beam data
 def getEBeamEnergyL3_MeV(evt=None, verbose=False):
-    if not _checkEvent(evt, verbose):
+    if not setEvent(evt, verbose):
         return np.nan
     EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
@@ -49,7 +68,7 @@ def getEBeamEnergyL3_MeV(evt=None, verbose=False):
     return EBeamObject.ebeamL3Energy()
 
 def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
-    if not _checkEvent(evt):
+    if not setEvent(evt):
         return np.nan
     EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
@@ -60,7 +79,7 @@ def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
     return ( EBeamObject.ebeamEnergyBC2() / -364.7 + 1 ) * 5e3
 
 def getEBeamCharge_nC(evt=None, verbose=False):
-    if not _checkEvent(evt):
+    if not setEvent(evt):
         return np.nan
     EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
@@ -68,7 +87,7 @@ def getEBeamCharge_nC(evt=None, verbose=False):
     return EBeamObject.ebeamCharge()
 
 def getEBeamPkCurrentBC2_A(evt=None, verbose=False):
-    if not _checkEvent(evt):
+    if not setEvent(evt):
         return np.nan
     EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
@@ -77,7 +96,7 @@ def getEBeamPkCurrentBC2_A(evt=None, verbose=False):
 
 # e-beam setup
 def getEBeamObject(evt=None, verbose=False):
-    if not _checkEvent(evt, verbose):
+    if not setEvent(evt, verbose):
         return None
     # Initialize the EBeam type
     if _EBeamType is None:
@@ -88,7 +107,7 @@ def getEBeamObject(evt=None, verbose=False):
 
 def _determineEBeamType(evt=None, verbose=False):
     global _EBeamType
-    if not _checkEvent(evt, verbose):
+    if not setEvent(evt, verbose):
         return None
     if verbose:
         print 'Find the correct EBeam type.'
@@ -108,7 +127,7 @@ def _determineEBeamType(evt=None, verbose=False):
 
 # fee
 def getPulseEnergy_mJ(evt=None, verbose=False):
-    if not _checkEvent(evt):
+    if not setEvent(evt):
         return np.nan
     fee = getFeeObject(_evt, verbose)
     if fee is None:
@@ -162,6 +181,55 @@ def getEventTime(evt=None, verbose=False):
     return time[0] + time[1] * 1e-9
 
 
+##############################
+# EVR functionality
+
+_evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
+_evrType = psana.EvrData.DataV3
+evrTypeList = (psana.EvrData.DataV3)
+
+def getEvrObject(evt=None, evrSource=_evrSource, verbose=False):
+    if verbose:
+        print 'Ger the evr object.'
+    if not setEvent(evt, verbose):
+        if verbose:
+            print 'No velid event.'
+        return None
+    if _evrType is None:
+        _determineEvrTypa(_evt, verbose)
+    return evt.get(_evrType, evrSource)
+
+def _determineEvrType(evt, verbose=False):
+    global _evrType
+    if verbose:
+        print 'Finding the correct EVR type.'
+    for type in evrTypeList:
+        if verbose:
+            print 'Trying {};'.format(type),
+        data = evt.get(type, _evrSource)
+        if data is not None:
+            _feeType = type
+            if verbose:
+                print ' correct.'
+                break
+        elif verbose:
+            print ' wrong one.'
+
+
+def getEvrCodes(evt, verbose=False):
+    evrData = getEvrObject(evt, verbose=verbose)
+    if evrData is None:
+        if verbose:
+            print 'No evr object returned.'
+        return []
+    return [fifo.eventCode() for fifo in evrData.fifoEvents()]
+
+def evrCodeInEvent(evt, evr, verbose=False):
+    if verbse:
+        print 'Checking for EVR codes.'
+    return evr in getEvrCodes(evt, verbose=verbose)
+
+
 if __name__ == '__main__':
     print 'Connecting to data source.'
     ds = psana.DataSource('exp=amoc8114:run=24')
@@ -174,4 +242,4 @@ if __name__ == '__main__':
     print 'Q is {} nC'.format(getEBeamCharge_nC(verbose=True))
     print 'I is {} A'.format(getEBeamPkCurrentBC2_A(verbose=True))
     print 'fee is {} mJ'.format(getPulseEnergy_mJ(verbose=True))
-
+    print 'Evr codes in event: {}'.format(getEvrCodes(evt, verbose=True))
