@@ -1,14 +1,24 @@
 import numpy as np
-import tofData
+import tofData as tof
 from configuration import loadConfiguration as loadConfig
 from aolUtil import struct
 import sys
 import random
 import lmfit
 from BurningDetectors_V6 import projector
+import psana
 
 # A bunch of methods to take care of the cookie box data
 
+sourceDict = {}
+def getSource(sourceString):
+    global sourceDict
+    if sourceString not in sourceDict:
+        sourceDict[sourceString] = psana.Source(sourceString)
+    return sourceDict[sourceString]
+
+
+proj = projector()
 
 def modelFunction(params, x, y=None, eps=None):
     A = params['A'].value
@@ -45,6 +55,8 @@ def initialParams(yData=None):
 
     return params
 
+phiDeg = np.arange(0, 360, 22.5)
+phiRad = phiDeg * np.pi / 180
 _anglesDeg = np.arange(0, 360, 22.5)
 _anglesRad = _anglesDeg * np.pi / 180
 _sinVect = np.sin( 2*_anglesRad )
@@ -62,8 +74,57 @@ def initialAngle(yData):
 
 
 def sliceFromRange(data, range):
-    return [slice(d.searchsorted(np.min(range)), d.searchsorted(np.max(range)))
-            for d in data]
+    dataList = type(data) == list
+    rangeList = type(range[0]) == list
+    if dataList and rangeList:
+        if len(data) != len(range):
+            return None
+        return [ slice( d.searchsorted(np.min(r)), d.searchsorted(np.max(r)) )
+                    for d, r in zip(data, range) ]
+
+    if dataList and (not rangeList):
+        return [ slice( d.searchsorted(np.min(range)),
+            d.searchsorted(np.max(range)))
+            for d in data ]
+
+    if (not dataList) and rangeList:
+        return [ slice( data.searchsorted(np.min(r)),
+            data.searchsorted(np.max(r)))
+            for r in range ]
+
+    return slice( data.searchsorted(np.min(range)),
+            data.searchsorted(np.max(range)))
+
+
+def getRawSignals(evt, sourceString, timeSlice=None, verbose=False):
+    if verbose:
+        print 'Trying to grab raw signals from source{}.'.format(getSource(sourceString))
+    try:
+        # try to get the acqiris data
+        acqirisData = evt.get(psana.Acqiris.DataDescV1, getSource(sourceString))
+    except:
+        if verbose:
+            print 'Fail. Exception was thrown.'
+        return None
+            
+    if acqirisData is None:
+        return None
+
+    if timeSlice is None:
+        timeSlice = slice(None)
+    
+    return np.array([ acqirisData.data(ch).waveforms()[0][timeSlice] for ch in
+        range(16) ])
+
+#def sumSignals(signals, slices):
+#    if type(slices) != slice:
+#        slices = [slices]*16
+#    [
+
+def getSignalScaling(env, sourceString, verbose=False):
+    temp = np.array( [tof.getSignalScaling(env, sourceString, ch,
+        verbose=verbose) for ch in range(16)] )
+    return temp[:,0], temp[:,1]
 
 
 class CookieBox:
@@ -77,7 +138,7 @@ class CookieBox:
         # A list of the tofData objects
         self._tofList = []
         for conf in config.tofConfigList:
-            self._tofList.append(tofData.tofData(conf, quiet=not verbose))
+            self._tofList.append(tof.tofData(conf, quiet=not verbose))
 
 
         self._phiDeg = _anglesDeg

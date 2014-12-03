@@ -7,22 +7,23 @@ Created on Fri May  2 12:04:54 2014
 
 class struct(object):
     def __init__(self, dataDict=None):
-        self._memberList = []
         if dataDict is not None:
             self.fromDict(dataDict)
 
     def members(self):
-        print self._memberList
+        print [k for k in self.__dict__]
 
     def toDict(self):
-        dict = {}
-        for k in self._memberList:
-            dict[k] = getattr(self, k)
+        return self.__dict__
 
     def fromDict(self, dataDict):
         for k,v in dataDict.items():
             setattr(self, k, v)
-            self._memberList.append(k)
 
-        self._memberList.sort()
+    def __repr__(self):
+        s = 'aolUtil.struct( {'
+        for k,v in self.__dict__.iteritems():
+            s += '\n\t"{}":{}'.format(k,v)
+        s += ' })'
+        return s
 

@@ -2,6 +2,12 @@ import numpy as np
 import aolUtil
 
 
+cbSourceString = "DetInfo(AmoETOF.0:Acqiris.0)"
+tMin_us =  1.48
+tMax_us =  1.6
+baselineSubtraction = 'early'
+baselineEnd_us = 1.5
+
 # Define the basic configuration
 basicTofConfig = {
     "acqCh": 10, 

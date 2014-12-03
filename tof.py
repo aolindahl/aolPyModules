@@ -18,7 +18,72 @@ if useWavelet:
 m_e_eV = 0.510998928e6 # http://physics.nist.gov/cgi-bin/cuu/Value?me 2014-04-21
 c_0_mps = 299792458 # http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=universal_in! 2014-04-21
 
+sourceDict = {}
+def getSource(sourceString):
+    global sourceDict
+    if sourceString not in sourceDict:
+        sourceDict[sourceString] = psana.Source(sourceString)
+    return sourceDict[sourceString]
 
+def getTimeScale_us(env, sourceString, verbose=False):
+    '''Returnes time scale of aquiris trace from environment object
+    
+    Returns None at failiure.
+    Unit is microseconds.'''
+
+    # Get the configuration
+    try:
+        acqirisConfig = env.configStore().get(psana.Acqiris.ConfigV1,
+                getSource(sourceString) )
+    except:
+        return None
+
+    # make the time scale vector for the acqiris channel.
+    # This is just for convenience
+    timeScale = acqirisConfig.horiz()
+    # Start time
+    t0 = timeScale.delayTime()
+    # Time step
+    dt = timeScale.sampInterval()
+    # Number of samples
+    nSample = timeScale.nbrSamples()
+    # Make the time scale vector from the above information and rescale it
+    # to microseconds 
+    return np.arange(t0, dt*nSample, dt)*1e6
+
+def getSignalScaling(env, sourceString, channel, verbose=False):
+    # Get the configuration
+    try:
+        acqirisConfig = env.configStore().get(psana.Acqiris.ConfigV1,
+                getSource(sourceString) )
+    except:
+        return None
+
+    # Get the scaling constants for the vertical scale.
+    # convenience reference
+    vertScale = acqirisConfig.vert()[channel]
+    # The vertical scale information is given as the full scale voltage over
+    # all the 2**16 bits.
+    # Here the voltage per bit is calculated
+    scaling = vertScale.fullScale() * 2**-16
+    # The scale also has an offset in voltage
+    offset = vertScale.offset()
+
+    return scaling, offset
+     
+
+
+def getRawSignals(env, ch, sourceString):
+    try:
+        # try to get the acqiris data
+        acqirisData = evt.get(psana.Acqiris.DataDescV1, getSource(sourceString))
+    except:
+        return None
+
+    if acqirisData == None:
+        return None
+
+    return acqirisData.data(ch).waveforms()[0]
 
 class tofData(object):
     """\
