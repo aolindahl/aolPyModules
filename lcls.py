@@ -103,7 +103,10 @@ def getEBeamObject(evt=None, verbose=False):
         if verbose:
             print 'Initializing the EBeam type.'
         _determineEBeamType(verbose=verbose)
-    return _evt.get(_EBeamType, _EBeamSource)
+    try:
+        return _evt.get(_EBeamType, _EBeamSource)
+    except:
+        return None
 
 def _determineEBeamType(evt=None, verbose=False):
     global _EBeamType
@@ -140,7 +143,10 @@ def getPulseEnergy_mJ(evt=None, verbose=False):
 def getFeeObject(evt, verbose=False):
     if _feeType is None:
         _determineFeeType(evt, verbose)
-    return evt.get(_feeType, _feeSource)
+    try:
+        return evt.get(_feeType, _feeSource)
+    except:
+        return None
 
 def _determineFeeType(evt, verbose=False):
     global _feeType
@@ -232,14 +238,15 @@ def evrCodeInEvent(evr, evt=None, verbose=False):
 
 if __name__ == '__main__':
     print 'Connecting to data source.'
-    ds = psana.DataSource('exp=amoc8114:run=24')
-    print 'Geting an event.'
-    evt = ds.events().next()
-    print 'Set the event'
-    setEvent(evt, verbose=True)
-    print 'E at L3 is {} MeV'.format(getEBeamEnergyL3_MeV(verbose=True))
-    print 'E at BC2 is {} MeV'.format(getEBeamEnergyBC2_MeV(verbose=True))
-    print 'Q is {} nC'.format(getEBeamCharge_nC(verbose=True))
-    print 'I is {} A'.format(getEBeamPkCurrentBC2_A(verbose=True))
-    print 'fee is {} mJ'.format(getPulseEnergy_mJ(verbose=True))
-    print 'Evr codes in event: {}'.format(getEvrCodes(evt, verbose=True))
+    ds = psana.DataSource('exp=amoi0314:run=14')
+    for i in range(10):
+        print 'Geting an event.'
+        evt = ds.events().next()
+        print 'Set the event'
+        setEvent(evt, verbose=True)
+        print 'E at L3 is {} MeV'.format(getEBeamEnergyL3_MeV(verbose=True))
+        print 'E at BC2 is {} MeV'.format(getEBeamEnergyBC2_MeV(verbose=True))
+        print 'Q is {} nC'.format(getEBeamCharge_nC(verbose=True))
+        print 'I is {} A'.format(getEBeamPkCurrentBC2_A(verbose=True))
+        print 'fee is {} mJ'.format(getPulseEnergy_mJ(verbose=True))
+        print 'Evr codes in event: {}'.format(getEvrCodes(evt, verbose=True))
