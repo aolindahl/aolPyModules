@@ -1,11 +1,16 @@
 #from setupEnvironment import *
 import numpy as np
 from configuration import loadConfiguration as loadConfig
-import psana
+try:
+    import psana
+except:
+    psana = None
+    print 'Using the module "{}" without psana capabililties.'.format(__name__)
 import time
 import wiener
 from scipy.sparse import coo_matrix
 import matplotlib.pyplot as plt
+import sys
 
 useWavelet = True
 if useWavelet:
@@ -20,6 +25,9 @@ c_0_mps = 299792458 # http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=uni
 
 sourceDict = {}
 def getSource(sourceString):
+    if psana is None:
+        print 'ERROR: Function "getSoutrce" cannot be used without psana.'
+        sys.exit()
     global sourceDict
     if sourceString not in sourceDict:
         sourceDict[sourceString] = psana.Source(sourceString)
@@ -30,6 +38,10 @@ def getTimeScale_us(env, sourceString, verbose=False):
     
     Returns None at failiure.
     Unit is microseconds.'''
+    
+    if psanas is None:
+        print 'ERROR: Function "getTimeScales_us" cannot be used without psana.'
+        sys.exit()
 
     # Get the configuration
     try:
