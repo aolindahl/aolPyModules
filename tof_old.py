@@ -26,46 +26,7 @@ c_0_mps = 299792458 # http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=uni
 ###################################################
 # Functions interacting with psana based data
 
-# Internal dictionary in the module to keep track of the used data sources
-_sourceDict = {}
-def getSource(sourceString):
-    if psana is None:
-        print 'ERROR: Function "getSoutrce" cannot be used without psana.'
-        sys.exit()
-    global _sourceDict
-    if sourceString not in _sourceDict:
-        _sourceDict[sourceString] = psana.Source(sourceString)
-    return _sourceDict[sourceString]
 
-def getTimeScale_us(env, sourceString, verbose=False):
-    """Returnes time scale of aquiris trace from environment object
-
-    Returns None at failiure.
-    Unit is microseconds."""
-
-    if psana is None:
-        print 'ERROR: Function "getTimeScales_us" cannot be used without psana.'
-        sys.exit()
-
-    # Get the configuration
-    try:
-        acqirisConfig = env.configStore().get(psana.Acqiris.ConfigV1,
-                getSource(sourceString) )
-    except:
-        return None
-
-    # make the time scale vector for the acqiris channel.
-    # This is just for convenience
-    timeScale = acqirisConfig.horiz()
-    # Start time
-    t0 = timeScale.delayTime()
-    # Time step
-    dt = timeScale.sampInterval()
-    # Number of samples
-    nSample = timeScale.nbrSamples()
-    # Make the time scale vector from the above information and rescale it
-    # to microseconds
-    return np.arange(t0, dt*nSample, dt)*1e6
 
 def getSignalScaling(env, sourceString, channel, verbose=False):
     """Get information on how to rescale the raw signal.
