@@ -23,10 +23,10 @@ def convertToStrings(input):
 
 
 def load_configuration_dict(file_name, default=None, verbose=False):
-    if (not os.path.isfile(fileName)):
+    if (not os.path.isfile(file_name)):
         if default is None:
             raise IOError(('The file {} could not be read' +
-                ' and no default was given.').format(file_name)
+                ' and no default was given.').format(file_name))
         
         return struct(default)
         

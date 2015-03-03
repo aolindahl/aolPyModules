@@ -10,12 +10,11 @@ baselineSubtraction = 'early'
 baselineEnd_us = 1.5
 
 # Define the basic configuration
-basicTofConfig = {
+basic_tof_config = {
     "acqCh": 10, 
     "baselineSubtraction":"early", # 'early', 'roi', 'none' 
     "baselineEnd_us": 1.5, 
-    "calibFile": ("/reg/neh/operator/amoopr/"
-		    + "amoi0114/psana/tofCalibs/tofCalibRetardation.json"), 
+    "calibFile": ("tof_calib_default.json"), 
     "filterMethod": "none", # wavelet, average, wienerDeconv 
     "filterWaveletLevels": 10, 
     "filterWinerSNR": 1,
@@ -74,7 +73,7 @@ tofConfigList = [None] * 16
 def makeTofConfigList(online=True):
     global tofConfigList
     for i in range(16):
-        tofConfigList[i] = basicTofConfig.copy()
+        tofConfigList[i] = basic_tof_config.copy()
 	tofConfigList[i]['calibFile'] = ('/reg/neh/operator/amoopr/'
 		    + 'amoi0114/psana/tofCalibs/tof{}Calib.json'.format(i+1)) 
 	if online:

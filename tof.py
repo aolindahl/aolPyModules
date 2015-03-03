@@ -1,12 +1,13 @@
 #from setupEnvironment import *
 import numpy as np
-from configuration import loadConfiguration as loadConfig
+from configuration import loadConfiguration, load_configuration_dict
 import time
 import wiener
 from scipy.sparse import coo_matrix
 import sys
 
 import simplepsana
+import aolUtil
 
 _useWavelet = True
 if _useWavelet:
@@ -19,49 +20,127 @@ if _useWavelet:
 m_e_eV = 0.510998928e6 # http://physics.nist.gov/cgi-bin/cuu/Value?me 2014-04-21
 c_0_mps = 299792458 # http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=universal_in! 2014-04-21
 
-###################################################
-# Functions interacting with psana based data
+
+def edges_from_centers(centers):
+    step = np.diff(centers).mean()
+    return np.concatenate([centers - step/s, centers[-1] + step/2])
+
+
+def get_acqiris_scales(env, source_string, channel, verbose=False):
+    # If a time scale is given, use it, oterhwhise try to get is from the
+    # env object.
+    if verbose:
+        print 'Get the time scale of the acqiris using:'
+        print '\tenv =', env
+        print '\tsource_string =', source_string
+    time_scale_us = simplepsana.get_acqiris_time_scale_us(env, source_string,
+                                                          verbose = verbose)
+    if time_scale_us is None:
+        print ('WARNING: No acqiris configuration obtained,' +
+                ' no scales aquired.')
+        return None, 1, 0
+    
+    if verbose:
+        print 'Get the vertical scaling of the acqiris channel.'
+    vert_scaling_V, vert_offset_V = \
+        simplepsana.get_acqiris_signal_scaling(env, source_string, channel,
+                                               verbose = verbose)
+
+    return time_scale_us, vert_scaling_V, vert_offset_V
+
+
+def energy_from_time_physical(time, D_mm=None, prompt_us=None, t_offset_us=0,
+                     E_offset_eV=0):
+    # The conversion is given by:
+    # E = D^2 m_e 10^6 / ( 2 c_0^2 (t - t_p)^2 ) + E0,
+    # where:
+    # D is the flight distance in mm
+    # m_e is the electon rest mass expressed in eV
+    # the 10^6 factor accounts the the otherwhise
+    # missmachching prefixes
+    # c_0 is the speed of light in m/s
+    # E is the energy in eV
+    # E0 is an energy offset in eV, should be
+    # determined in a callibration fit
+    # t_p is the arrival time of the prompt signal in microseconds
+    return (D_mm**2 * m_e_eV * 1e6 /
+        (c_0_mps**2 * 2 * (time - prompt_us - t_offset_us)**2) + E_offset_eV)
 
 
 
-def getSignalScaling(env, sourceString, channel, verbose=False):
-    """Get information on how to rescale the raw signal.
+def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
+                                  D_mm=None, prompt_us=None, t_offset_us=0,
+                                  E_offset_eV=0):
+    if verbose:
+        print 'In get_energy_scale_and conversion()'
+    # Get basic data about the time scale
+    dt = np.diff(time_scale_us).mean()
+    t0 = time_scale_us[0]
+    num_time_bins = len(time_scale_us)
+    # Calculate bin edges in the time domain
+    time_scale_t_edges = aolUtil.limits_from_centers(time_scale_us)
+    # and the corresponding bin edges in the energy domain.
+    time_scale_E_edges = energy_from_time_physical(time_scale_t_edges,
+                                                   D_mm=D_mm,
+                                                   prompt_us=prompt_us,
+                                                   t_offset_us=t_offset_us,
+                                                   E_offset_eV=E_offset_eV)
+    if verbose:
+        print 'Time scale E edges are:', time_scale_E_edges
+    # Number of energy bins
+    num_energy_bins = len(energy_scale_eV)
+    # Energy bin size
+    dE = np.diff(energy_scale_eV).mean()
+    # energy scale bin limits
+    energy_scale_E_edges = aolUtil.limits_from_centers(energy_scale_eV)
+    
+    # Make matrixes out of the edges vectors in energy domain
+    mat_time_E = np.concatenate([time_scale_E_edges.reshape(1,-1)] *
+        num_energy_bins)
+    mat_energy_E= np.concatenate([energy_scale_E_edges.reshape(-1,1)] *
+        num_time_bins, axis=1)
 
-    env -- psana environment.
-    sourceString
-        String describing the psana dataSource of the aquiris board(s).
-    channel
-        The channel to get data for.
-    verbose
-        If True the function prints debug information. Default = False.
+    # Compute the start and end energies for the conversion from the time axis
+    # to energy axis
+    high_E_limit = ( np.minimum( mat_time_E[:,:-1], mat_energy_E[1:,:] ) )
+    low_E_limit = ( np.maximum( mat_time_E[:,1:], mat_energy_E[:-1,:] ) )
+    # Only where the high energy is more than the low energy the conversion
+    # makes anny sense
+    I = low_E_limit < high_E_limit
+    # Allocate a tempoarary conversion matrix
+    temp_conversion_mat = np.zeros((num_energy_bins, num_time_bins))
+    # Calculate the elements of the conversion matrix
+    # For each time bin the measured amplitude is multiplied by the bin size
+    # in order to arrive at the integral of the signal. Then it is
+    # determined how much of each time bin contributes to each energy bin.
+    # This is done by comparing the edge positions of the time and energy
+    # bins and assigning the correct proportion of the integral in time
+    # domain to integral in the energy domain. Finally the total integral is
+    # divided by the energy bin size in order to return to an amplitude.
+    # Summation over all time bins is performed in the matrix multiplication
+    # of the conversion matrix with the time domain amplitude vector.
+    temp_conversion_mat[I] = (dt * (high_E_limit[I] - low_E_limit[I]) / 
+            ( mat_time_E[:,:-1] - mat_time_E[:,1:] )[I] / dE)
+    # The conversion matrix is highly sparse, thus make a sparse matrix to
+    # spped up the calculationss
+    conversion_mat = coo_matrix(temp_conversion_mat)
 
-    Returns: scaling, offset
+    # Create the energy scale
+    # Find out which part of the time scale is after the prompt peak
+    # The calibration information is used for this
+    I = time_scale_us > prompt_us + t_offset_us
+    # Allocate an energy scale with -1 value (unphysical).
+    raw_energy_scale_eV = -np.ones_like(time_scale_us)
+    raw_energy_scale_eV[I] = energy_from_time_physical(time_scale_us,
+                                                       D_mm=D_mm,
+                                                       prompt_us=prompt_us,
+                                                       t_offset_us=t_offset_us,
+                                                       E_offset_eV=E_offset_eV)
+    # Set the Energies that correspond to times befor the prompt to the
+    # maximum energy.
+    raw_energy_scale_eV[~I] = np.max(self._rawEnergyScale_eV)
 
-    scaling
-        Multiplicative factor (V).
-    offset
-        Offset (V).
-    """
-    # Get the configuration
-    try:
-        acqirisConfig = env.configStore().get(psana.Acqiris.ConfigV1,
-                getSource(sourceString) )
-    except:
-        return None
-
-    # Get the scaling constants for the vertical scale.
-    # convenience reference
-    vertScale = acqirisConfig.vert()[channel]
-    # The vertical scale information is given as the full scale voltage over
-    # all the 2**16 bits.
-    # Here the voltage per bit is calculated
-    scaling = vertScale.fullScale() * 2**-16
-    # The scale also has an offset in voltage
-    offset = vertScale.offset()
-
-    return scaling, offset
-
-
+    return conversion_mat, raw_energy_scale_eV
 
 def getRawSignals(evt, ch, sourceString):
     """Get raw aquiris data.
@@ -91,17 +170,20 @@ class tofData(object):
     Conversions to energy scale including rescaling of the amplitudes\
     """
 
-    def __init__(self, config, quiet=True):
+    def __init__(self, config, verbose=False):
         """\
         Initialize the tofData class giving it a configutaion object.\
         """
 
         # Extract the data source
-        self._source = psana.Source(config['detectorSource'])
+        self._source = simplepsana.get_source(config['detectorSource'])
+        self._acqiris_source_string = config['detectorSource']
         # Extract the acqiris channel
-        self._acqCh = config['acqCh']
+        self._acqiris_channel = config['acqCh']
         # Load the callibration file pointed to in the configuration
-        self._calib = loadConfig(config['calibFile'], quiet=quiet)
+        self._calibration= load_configuration_dict(config['calibFile'],
+                                                   verbose=verbose)
+        
 
         # Store the configuration
         self._config = config
@@ -112,13 +194,13 @@ class tofData(object):
 
         # Initialy the class does not contain any data or any scales
         self._noData = True
-        self._noScales = True
+        self._no_scales = True
 
         # Basic info about filtering
         self._filterTimeDomain = False
         self._timeAmplitudeFiltered = None
 
-        self._quiet = quiet
+        self._verbose = verbose
 
         if 'filterMethod' in self._config.keys():
             if self._config['filterMethod'] == "wienerDeconv":
@@ -129,7 +211,7 @@ class tofData(object):
                 self.filterTimeDomainData(method='wavelet',
                         levels=self._config["filterWaveletLevels"])
             elif self._config['filterMethod'] == 'average':
-                if not self._quiet:
+                if self._verbose:
                     print 'Using averaging with {} points'.format(
                             self._config['filterAverageNumPoints'])
                 self.filterTimeDomainData(method='average',
@@ -144,164 +226,56 @@ class tofData(object):
 
 
 
-    def setupScales(self, env=None,
-                    energyAxisBinLimits=np.linspace(800, 1000, 129),
-                    timeScale_us=None):
+    def setupScales(self, energy_scale_eV, env=None,
+                    time_scale_us=None, t_min_us=None, t_max_us=None):
         """Setup the information about the acqiris channel used for the TOF.
 
         Reads the scale factors for the raw aquiris data and also calculates
         the conversion to the energy domain.
         """
 
-        if not self._quiet:
+        if self._verbose:
             print 'Seting up the scales.'
 
-        segment = 0 # Somehow the aquiris channels uses only segment 0
-
-        # If a time scale is given, use it, oterhwhise try to get is from the
-        # env object.
+        # Time scale
         if time_scale_us is None:
-            time_scale_us = simplepsana.getTimeScale_us(env, self._source,
-                                                        verbose = self._verbose)
-            if timeScale_us is None:
-            print ('WARNING: No acqiris configuration obtained,\n' +
-                    ' and no time scale given explicitly. WARNING')
-            self._noScales = True
+            self._time_scale_us, self._acq_vert_scaling, self._acq_vert_offset = \
+                get_acqiris_scales(env, self._acqiris_source_string,
+                                   self._acqiris_channel,
+                                   verbose=self._verbose)
+        else:
+            self._time_scale_us = time_scale_us.copy()
+
+        if self._time_scale_us is None:
+            if self._verbose:
+                print 'No scales found.'
+            self._no_scales = True
             return
 
-
-        # If only a slice of the time should be used
-        if self._config['tSlice']:
-            # Define the time slice for the configuration
-            self._timeSlice = slice(
-                    np.searchsorted(self._timeScale_us,
-                        self._config['tMin_us']),
-                    np.searchsorted(self._timeScale_us,
-                        self._config['tMax_us']))
-            self._timeScale_us = self._timeScale_us[self._timeSlice]
+        # Time sliceing
+        if self._verbose:
+            print 'Seting up the time slicing.'
+        if t_min_us is None:
+            slice_start = None
         else:
-            self._timeSlice = slice(None)
-
-
-            # Get the scaling constants for the vertical scale.
-            # convenience reference
-            vertScale = acqirisConfig.vert()[self._acqCh]
-            # The vertical scale information is given as the full scale voltage over
-            # all the 2**16 bits.
-            # Here the voltage per bit is calculated
-            self._acqVertScaling = vertScale.fullScale() * 2**-16
-            # The scale also has an offset in voltage
-            self._acqVertOffset = vertScale.offset()
+            slice_start = self._time_scale_us.searchsorted(t_min_us)
+        if t_max_us is None:
+            slice_end = None
         else:
-            self._timeScale_us = timeScale.copy()
-            dt = np.diff(self._timeScale_us).mean()
-            t0 = self._timeScale_us[0]
-            nSample = len(timeScale)
-            self._timeSlice = slice(None)
+            slice_end = self._time_scale_us.searchsorted(t_max_us)
+        self._time_slice = slice(slice_start, slice_end)
 
-        #print 'dt =', dt
+        # Energy scale and conversion matrix
+        self._energy_scale_eV = energy_scale_eV
+        self._time_to_energy_matrix, self._raw_energy_scale_eV = \
+            get_time_to_energy_conversion(self._time_scale_us[self._time_slice],
+                                          self._energy_scale_eV,
+                                          verbose=self._verbose,
+                                          **self._calibration)
 
-        # Calculate the bin edges in the time domain
-        tEdges = np.concatenate([self._timeScale_us - dt/2,
-            self._timeScale_us[-1:] + dt/2])
-        # and the corresponding bin edges in the energy domain.
-        # The conversion is given by:
-        # E = D^2 m_e 10^6 / ( 2 c_0^2 (t - t_p)^2 ) + E0,
-        # where:
-        # D is the flight distance in mm
-        # m_e is the electon rest mass expressed in eV
-        # the 10^6 factor accounts the the otherwhise missmachching prefixes
-        # c_0 is the speed of light in m/s
-        # E is the energy in eV
-        # E0 is an energy offset in eV, should be determined in a callibration
-        # fit
-        # t_p is the arrival time of the prompt signal in microseconds
-        eEdges = (self._calib.D_mm**2 * m_e_eV * 1e6
-                / (c_0_mps**2 * 2 * (tEdges - self._calib.prompt_us
-                    - self._calib.tOffset_us)**2)
-                + self._calib.EOffset_eV - self._calib.EOffsetRetardation *
-                retardation)
-
-
-
-        # Number of energy bins
-        nEBins = len(energyAxisBinLimits) - 1
-        # Energy bin size
-        dE = np.diff(energyAxisBinLimits).mean()
-
-        # Make matrixes out of the edges vectors in energy domain
-        Me = np.concatenate([eEdges.reshape(1,-1)]*nEBins)
-        ME = np.concatenate([energyAxisBinLimits.reshape(-1,1)] *
-                len(self._timeScale_us), axis=1)
-
-        # Compute the start and end energies for the conversion from the time axis
-        # to energy axis
-        highE = ( np.minimum( Me[:,:-1], ME[1:,:] ) )
-        lowE = ( np.maximum( Me[:,1:], ME[:-1,:] ) )
-        # Only where the high energy is more than the low energy the conversion makes anny sense
-        I = lowE < highE
-        # Allocate a tempoaraty conversion matrix
-        tempMat = np.zeros((nEBins, len(self._timeScale_us)))
-        # Calculate the elements of the conversion matrix
-        # For each time bin the measured amplitude is multiploed by the bin size
-        # in order to errive at the integral of the signal. Then the it is
-        # determined how much of each time bin contributes to each energy bin.
-        # This is done by comparing the edge positions of the time and energy
-        # bins and assigning the correct proportion of the integral in time
-        # domain to integral in the energy domain. Finally the total integral is
-        # divided by the energy bin size in order to return to an amplitude.
-        # Summation over all time bins is performed in the matrix multiplication
-        # of the conversion matrix with the time domain amplitude vector.
-        tempMat[I] = dt * (highE[I] - lowE[I]) / ( Me[:,:-1] - Me[:,1:] )[I] / dE
-        # The conversion matrix is highly sparse, thus make a sparse matrix to
-        # spped up the calculationss
-        self._timeToEnergyConversionMatrix = coo_matrix(tempMat)*1e9
-
-
-        #plt.figure(111); plt.clf()
-        #plt.imshow(self._timeToEnergyConversionMatrix.todense(),
-        #        interpolation='none', aspect='auto',
-        #        extent=(self._timeScale_us.min(), self._timeScale_us.max(),
-        #            energyAxisBinLimits.min(), energyAxisBinLimits.max()),
-        #        origin='lower' )
-        #plt.gcf().show()
-
-
-
-
-        # Create the energy scale
-
-        # Find out which part of the time scale is after the prompt peak
-        # The calibration information is used for this
-        I = self._timeScale_us > self._calib.prompt_us + self._calib.tOffset_us
-        # Allocate an energy scale with -1 value (unphysical).
-        self._rawEnergyScale_eV = -np.ones(self._timeScale_us.shape)
-
-        # Calculate the energy in eV that corresponds to all times after the
-        # time for prompt signal. This is done as:
-        # E = D**2 * m_e / (c_0**2 * (t - t_prompt - t_fitOffset)**2) *1e6
-        #   - E_fitOffset
-        # The 1e6 factor accounts for the unit mismatch
-        self._rawEnergyScale_eV[I] = (self._calib.D_mm**2
-            * m_e_eV * 1e6 / (c_0_mps**2 * 2
-                * (self._timeScale_us[I] - self._calib.prompt_us
-                    - self._calib.tOffset_us)**2)
-            - self._calib.EOffset_eV)
-        # Set the Energies that correspond to imes befor the prompt to the
-        # maximum energy.
-        self._rawEnergyScale_eV[~I] = np.max(self._rawEnergyScale_eV)
-
-
-        # Make the energy scale from the bin limits. Calculating the center
-        # of the bins.
-        self._energyScale_eV = (np.diff(energyAxisBinLimits)/2
-                                + energyAxisBinLimits[:-1])
-
-        # get the energy bin size
-        self._energyBinSize = self._energyScale_eV[1] - self._energyScale_eV[0]
 
         # Set the region of interest slices
-        if not self._quiet:
+        if self._verbose:
             print 'Looking for ROIs'
         for domain, roiBase in zip(
                 ['Time', 'Energy'],
@@ -309,7 +283,7 @@ class tofData(object):
             for iRoi in range(2):
                 roi = roiBase.format(iRoi)
                 if roi in self._config:
-                    if not self._quiet:
+                    if self._verbose:
                         print '\t{} found'.format(roi)
                         print self._config[roi]
                     self.setBaseRoi(
@@ -321,7 +295,7 @@ class tofData(object):
 
         # Make a backgeound slice
         if self._config['baselineSubtraction'] == 'early':
-            self._bgSlice = slice(self._timeScale_us.searchsorted(
+            self._bgSlice = slice(self._time_scale_us.searchsorted(
                         self._config['baselineEnd_us']))
         elif self._config['baselineSubtraction'] == 'roi':
             try:
@@ -339,17 +313,17 @@ class tofData(object):
 
         # Check if there is actually something to calculate the background
         # from
-        if len(self._timeScale_us[self._bgSlice]) < 1:
+        if len(self._time_scale_us[self._bgSlice]) < 1:
             self._config['baselineSubtraction'] = 'none'
 
 
 
-        self._noScales = False
+        self._no_scales = False
 
     def setBaseRoi(self, min, max, roi=0, domain='Time'):
         if domain=='Time':
-            a = self._timeScale_us.searchsorted(min)
-            b = a + self._timeScale_us[a:].searchsorted(max)
+            a = self._time_scale_us.searchsorted(min)
+            b = a + self._time_scale_us[a:].searchsorted(max)
             self._timeRoiSlice[roi] = slice(a,b)
         elif domain=='Energy':
             a = self._energyScale_eV.searchsorted(min)
@@ -367,13 +341,13 @@ class tofData(object):
         Set waveform data and compute the scaled data.\
         """
 
-        if not self._quiet:
+        if self._verbose:
             print 'Seting raw data.'
 
 
         # If a psan event was passed as a parametere
         if evt is not None:
-            if not self._quiet:
+            if self._verbose:
                 print 'Event object given.'
             try:
                 # try to get the acqiris data
@@ -382,12 +356,13 @@ class tofData(object):
                 self._noData = True
                 return
 
-            if acqirisData == None or self._noScales:
+            if acqirisData == None or self._no_scales:
                 self._noData = True
                 return
 
             # If everything worked out calculate the rescaled amplitude
-            new = -(acqirisData.data(self._acqCh).waveforms()[0][self._timeSlice]
+            new = -(acqirisData.data(self._acqiris_channel).waveforms()[0][
+                        self._time_slice]
                     * self._acqVertScaling - self._acqVertOffset)
 
             if (self._timeAmplitude is None or newDataFactor == 1 or
@@ -414,7 +389,7 @@ class tofData(object):
                     self._timeAmplitude -= self._bgHistory
 
         elif timeAmplitude_V is  None:
-            if not self._quiet:
+            if self._verbose:
                 print 'Niether event nor time scale given.'
             # If neither psana event, nor amplitude was given
             self._noData = True
@@ -422,7 +397,7 @@ class tofData(object):
 
         else:
             # If no psana event was given but threre is an amplitude
-            self._timeAmplitude = timeAmplitude_V[self._timeSlice]
+            self._timeAmplitude = timeAmplitude_V[self._time_slice]
 
         self._filterTimeDomainData()
 
@@ -442,11 +417,11 @@ class tofData(object):
 
 
     def getTimeScale_us(self, roi=None):
-        if self._noScales:
+        if self._no_scales:
             return None
         if roi!=None and self._timeRoiSlice!=None:
-            return self._timeScale_us[self._timeRoiSlice[roi]]
-        return self._timeScale_us
+            return self._time_scale_us[self._timeRoiSlice[roi]]
+        return self._time_scale_us
 
     def getTimeAmplitude(self, roi=None):
         if self._noData:
@@ -472,14 +447,14 @@ class tofData(object):
         return self._energyAmplitude
 
     def getEnergyScale_eV(self, roi=None):
-        if self._noScales:
+        if self._no_scales:
             return None
         if roi!=None and self._energyRoiSlice!=None:
             return self._energyScale_eV[self._energyRoiSlice[roi]]
         return self._energyScale_eV
 
     def getRawEnergyScale(self, roi=None):
-        if self._noScales:
+        if self._no_scales:
             return None
         if roi!=None and self._timeRoiSlice!=None:
             return self._energyScale_eV[self._timeRoiSlice[roi]]
@@ -614,7 +589,6 @@ class tofData(object):
 
 
 def psanaTester():
-    import psana
     import matplotlib.pyplot as plt
     import scipy.signal
     from ZmqSender import zmqSender
@@ -622,7 +596,7 @@ def psanaTester():
 
 
     # Load the config file
-    import cookieBoxDefaultConfig as config
+    import cookiebox_default_config as config
     # Create the sender, but only if zmq should be used
     if config.useZmq:
         sender = zmqSender()
@@ -630,7 +604,7 @@ def psanaTester():
         plt.ion()
 
     # Create the tofData object
-    tof = tofData(config.basicTofConfig, quiet=False)
+    tof = tofData(config.basic_tof_config, verbose=True)
     tof.filterTimeDomainData(method='wavelet', numPoints=4)
 
     EMin = config.minE_eV
@@ -642,7 +616,7 @@ def psanaTester():
 
     # Connect to data source
     print 'Connecting to data soutrce:', config.dataSource
-    ds = psana.DataSource(config.dataSource)
+    ds = simplepsana.get_data_source(config.dataSource)
     print 'done'
     for num, evt in enumerate(ds.events()):
         print 'event ', num
@@ -651,8 +625,8 @@ def psanaTester():
 
         if num is 0:
             #Initialize the scalse
-            tof.setupScales(ds.env(), np.linspace(EMin, EMax,
-                config.nEnergyBins))
+            tof.setupScales(np.linspace(EMin, EMax, config.nEnergyBins),
+                            ds.env())
             # Get the x scales
             t = tof.getTimeScale_us()
             E = tof.getEnergyScale_eV()
@@ -742,12 +716,12 @@ def nonPsanaTester():
     file = h5py.File(fileName, 'r')
 
     # Make references to some of the data in the h5 file
-    tAx = file['tof_timeScale_us']
+    tAx = file['tof_time_scale_us']
     tAmpVec = file['tof_timeAmplitude_V']
 
 
     # Create the tofData object
-    tof = tofData(config, quiet=False)
+    tof = tofData(config, verbose=True)
     #tof.filterTimeDomainData(False)
     tof.filterTimeDomainData(method='average')
     #tof.filterTimeDomainData(method='wienerDeconv',
