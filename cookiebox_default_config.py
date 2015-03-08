@@ -1,7 +1,7 @@
 import numpy as np
 import aolUtil
 
-offlineSource = 'exp=amoi0314:run=15'
+offline_source = 'exp=amoi0314:run=15'
 
 cbSourceString = "DetInfo(AmoETOF.0:Acqiris.0)"
 tMin_us =  1.48
