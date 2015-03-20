@@ -174,7 +174,10 @@ class TofData(object):
         # Extract the acqiris channel
         self._acqiris_channel = config['acqCh']
         # Load the callibration file pointed to in the configuration
-        self._calibration= load_configuration_dict(config['calibFile'],
+        if verbose:
+            print 'Load the calibration from file "{}".'.format(
+                    config['calib_file'])
+        self._calibration= load_configuration_dict(config['calib_file'],
                                                    verbose=verbose)
         
 
@@ -191,6 +194,7 @@ class TofData(object):
 
         # Basic info about filtering
         self._filter_time_domain = False
+        self._filter_method = None
         self._time_amplitude_filtered = None
 
         self._verbose = verbose
@@ -575,7 +579,7 @@ class TofData(object):
     def get_moments(self, domain='Time', roi=None):
         if domain == 'Time':
             x = self.get_time_scale_us(roi=roi)
-            y = self.getTimeAmplitudeFiltered(roi=roi)
+            y = self.get_time_amplitude_filtered(roi=roi)
         elif domain == 'Energy':
             x = self.get_energy_scale_eV(roi=roi)
             y = self.get_energy_amplitude(roi=roi)
