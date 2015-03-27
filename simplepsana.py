@@ -60,7 +60,8 @@ def get_acqiris_time_scale_us(env, source_string, verbose=False):
     # This is just for convenience
     timeScale = acqiris_config.horiz()
     # Start time
-    t0 = timeScale.delayTime()
+    #t0 = timeScale.delayTime()
+    t0 = 0
     # Time step
     dt = timeScale.sampInterval()
     # Number of samples

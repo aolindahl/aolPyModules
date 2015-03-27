@@ -90,6 +90,7 @@ def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
     if verbose:
         print 'Time scale E edges are:', time_scale_E_edges
     # Number of energy bins
+    #print energy_scale_eV
     num_energy_bins = len(energy_scale_eV)
     # Energy bin size
     dE = np.diff(energy_scale_eV).mean()
@@ -145,14 +146,14 @@ def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
     return conversion_mat, raw_energy_scale_eV
 
 
-def get_acqiris_data(evt, source_string, channel, scaling=1, offset=0,
+def get_acqiris_data(evt, source_string, channel, scaling=1., offset=0,
                      invert=True, selection=slice(None), verbose=False):
     raw_data = simplepsana.get_acqiris_waveform(evt, source_string,channel,
                                                 verbose=verbose)
     if raw_data is None:
         return None
 
-    invert_factor = -1 if invert else 1
+    invert_factor = -1. if invert else 1.
     return invert_factor * (raw_data[selection] * scaling - offset)
 
 
@@ -224,7 +225,7 @@ class TofData(object):
 
 
     def setup_scales(self, energy_scale_eV, env=None,
-                    time_scale_us=None, t_min_us=None, t_max_us=None):
+                    time_scale_us=None, retardation=0):
         """Setup the information about the acqiris channel used for the TOF.
 
         Reads the scale factors for the raw aquiris data and also calculates
@@ -252,21 +253,35 @@ class TofData(object):
         # Time sliceing
         if self._verbose:
             print 'Seting up the time slicing.'
-        if t_min_us is None:
-            slice_start = None
+        if ('t_slice' in self._config) and (self._config['t_slice'] == True):
+            if 't_min_us' in self._config:
+                slice_start = self._time_scale_us.searchsorted(
+                        self._config['t_min_us'])
+            else:
+                slice_start = None
+
+            if 't_max_us' in self._config:
+                slice_end = self._time_scale_us.searchsorted(
+                        self._config['t_max_us'])
+            else:
+                slice_end = None
+            self._time_slice = slice(slice_start, slice_end)
         else:
-            slice_start = self._time_scale_us.searchsorted(t_min_us)
-        if t_max_us is None:
-            slice_end = None
-        else:
-            slice_end = self._time_scale_us.searchsorted(t_max_us)
-        self._time_slice = slice(slice_start, slice_end)
+            self._time_slice = slice(None)
+        if self._verbose:
+            print 'Time slice is: {}.'.format(self._time_slice)
+
+        # Adjust the time scale
+        self._time_scale_us = self._time_scale_us[self._time_slice]
 
         # Energy scale and conversion matrix
+        self._calibration['E_offset_eV'] += retardation
         self._energy_scale_eV = energy_scale_eV
+        #self._energy_scale_eV = energy_scale_eV[
+        #        energy_scale_eV.searchsorted(self._calibration['E_offset_eV']):]
         self._energy_bin_size = np.diff(energy_scale_eV).mean()
         self._time_to_energy_matrix, self._raw_energy_scale_eV = \
-            get_time_to_energy_conversion(self._time_scale_us[self._time_slice],
+            get_time_to_energy_conversion(self._time_scale_us,
                                           self._energy_scale_eV,
                                           verbose=self._verbose,
                                           **self._calibration)
@@ -277,18 +292,23 @@ class TofData(object):
             print 'Looking for ROIs'
         for domain, roiBase in zip(
                 ['Time', 'Energy'],
-                ['timeRoi{}_us', 'energyRoi{}_eV']):
+                ['time_roi_{}_us', 'energy_roi_{}_eV']):
             for iRoi in range(2):
                 roi = roiBase.format(iRoi)
+                roi_bg = roiBase.format('{}_bg'.format(iRoi))
+                if self._verbose:
+                    print 'Looking for {}.'.format(roi)
                 if roi in self._config:
                     if self._verbose:
-                        print '\t{} found'.format(roi)
+                        print '{} found'.format(roi)
                         print self._config[roi]
                     self.set_base_roi(
                             min = self._config[roi][0],
                             max = self._config[roi][1],
                             roi = iRoi,
                             domain = domain)
+                if roi_bg in self._config:
+                    pass
 
 
         # Make a backgeound slice
@@ -351,7 +371,8 @@ class TofData(object):
             if self._verbose:
                 print 'Event object given.'
 
-            new = get_acqiris_data(evt, self._source_string, self._acqiris_channel,
+            new = get_acqiris_data(evt, self._source_string,
+                                   self._acqiris_channel,
                                    scaling=self._acq_vert_scaling,
                                    offset=self._acq_vert_offset,
                                    invert=True, selection=self._time_slice,
@@ -407,6 +428,8 @@ class TofData(object):
             print 'Apply time domain filter.'
         self._filter_time_domain_data()
 
+        if self._verbose:
+            print 'Calculate energy amplitudes.'
         self.calc_energy_amplitude()
 
         self._no_data = False
@@ -419,6 +442,7 @@ class TofData(object):
 
         # Calculate the signal amplitude in the energy domain.
         self._energy_amplitude = self._time_to_energy_matrix.dot(tAmp)
+        #self._energy_amplitude = np.ones(len(self._energy_scale_eV))
         return
 
 
@@ -430,9 +454,13 @@ class TofData(object):
         return self._time_scale_us
 
     def get_time_amplitude(self, roi=None):
+        #if self._verbose:
+        #    print 'In tof.TofData.get_time_amplitude.'
+        #    print 'Has', 'no' if self._no_data else None, 'data.'
+        #    print self._time_amplitude
         if self._no_data:
             return None
-        if roi!=None and self._time_roi_slice!=None:
+        if (roi is not None) and (self._time_roi_slice is not None):
             return self._time_amplitude[self._time_roi_slice[roi]]
         return self._time_amplitude
 

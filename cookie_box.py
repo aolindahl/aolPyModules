@@ -74,8 +74,8 @@ def initial_angle(y_data):
 
 
 def slice_from_range(data, range):
-    data_list = type(data) == list
-    range_list = type(range[0]) == list
+    data_list = isinstance(data, list)
+    range_list = isinstance(range[0], list)
     if data_list and range_list:
         if len(data) != len(range):
             return None
@@ -96,7 +96,7 @@ def slice_from_range(data, range):
             data.searchsorted(np.max(range)))
 
 
-def get_raw_signals(evt, source_string, time_slice=None, verbose=False):
+def get_raw_signals(evt, source_string, time_slice=slice(None), verbose=False):
     if verbose:
         print 'Trying to grab raw signals from source{}.'.format(get_source(source_string))
     try:
@@ -110,9 +110,6 @@ def get_raw_signals(evt, source_string, time_slice=None, verbose=False):
     if acqiris_data is None:
         return None
 
-    if time_slice is None:
-        time_slice = slice(None)
-    
     return np.array([ acqiris_data.data(ch).waveforms()[0][time_slice] for ch in
         range(16) ])
 
@@ -122,9 +119,9 @@ def get_raw_signals(evt, source_string, time_slice=None, verbose=False):
 #    [
 
 def get_signal_scaling(env, source_string, verbose=False):
-    temp = np.array( [tof.get_signal_scaling(env, source_string, ch,
+    temp = np.array( [tof.get_acqiris_scales(env, source_string, ch,
         verbose=verbose) for ch in range(16)] )
-    return temp[:,0], temp[:,1]
+    return temp[:,1], temp[:,2]
 
 
 class CookieBox:
@@ -155,15 +152,16 @@ class CookieBox:
 
         self.proj = projector()
 
-    def setup_scales(self,
-            energy_scale_eV=np.linspace(800, 1000, 257)[1::2],
-            env=None, time_scale=None, verbose=None):
+    def setup_scales(self, energy_scale_eV,
+            env=None, time_scale=None, retardation=0, verbose=None):
+        #print 'energy scale: ', energy_scale_eV
         if verbose is None:
             verbose = self._verbose
         if verbose:
             print 'In cookie_box.CookieBox.setup_scales().'
         for  tof in self._tof_list:
-            tof.setup_scales(energy_scale_eV, env, time_scale)
+            tof.setup_scales(energy_scale_eV, env, time_scale,
+                             retardation=retardation)
 
 
     def setBaselineSubtractionAveraging(self, weightLast):
@@ -187,7 +185,8 @@ class CookieBox:
         return [amp[s] for amp, s in zip(self._timeAmplitudes, roiSlices)]
 
     def get_time_amplitudes_filtered(self, roi=None, verbose=False):
-        return [tof.get_time_amplitude_filtered(roi=roi) for tof in self._tof_list]
+        return [tof.get_time_amplitude_filtered(roi=roi) for tof 
+                in self._tof_list]
 
     def get_energy_scales_eV(self, roi=None, verbose=False):
         return [tof.get_energy_scale_eV(roi=roi) for tof in self._tof_list]
@@ -383,11 +382,11 @@ if __name__ == '__main__':
                 verbose=True)
             
             energy_data = cb.get_energy_amplitudes()
-            print len(energy_data)
-            print energy_data[0].shape
+            #print len(energy_data)
+            #print energy_data[0].shape
             #spectrum = np.average(energy_data, axis=0)
             spectrum = energy_data[15]
-            print spectrum
+            #print spectrum
             #energy_data_roi_0 = cb.get_energy_amplitudes(roi=0)
             #energy_data_roi_1 = cb.get_energy_amplitudes(roi=1)
             time_data = cb.get_time_amplitudes()
