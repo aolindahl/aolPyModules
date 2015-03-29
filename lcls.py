@@ -11,13 +11,15 @@ _evt = None
 _currentFiducial = None
 
 if psana is not None:
-    EBeamTypeList = (psana.Bld.BldDataEBeamV0,
+    EBeamTypeList = (
+            psana.Bld.BldDataEBeamV0,
             psana.Bld.BldDataEBeamV1,
             psana.Bld.BldDataEBeamV2,
             psana.Bld.BldDataEBeamV3,
             psana.Bld.BldDataEBeamV4,
             psana.Bld.BldDataEBeamV5,
-            psana.Bld.BldDataEBeamV6)
+            psana.Bld.BldDataEBeamV6,
+            psana.Bld.BldDataEBeamV7)
             
     _EBeamSource = psana.Source('BldInfo(EBeam)')
 

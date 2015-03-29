@@ -217,8 +217,8 @@ class TofData(object):
 
 
         self._time_amplitude = None
-        self._time_roi_slice = [None, None]
-        self._energy_roi_slice =[None, None]
+        self._time_roi_slice = [None, None, None, None]
+        self._energy_roi_slice =[None, None, None, None]
 
         self._bgWeight = None
 
@@ -293,7 +293,7 @@ class TofData(object):
         for domain, roiBase in zip(
                 ['Time', 'Energy'],
                 ['time_roi_{}_us', 'energy_roi_{}_eV']):
-            for iRoi in range(2):
+            for iRoi in range(4):
                 roi = roiBase.format(iRoi)
                 roi_bg = roiBase.format('{}_bg'.format(iRoi))
                 if self._verbose:
