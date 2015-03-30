@@ -194,6 +194,17 @@ class CookieBox:
     def get_energy_amplitudes(self, roi=None, verbose=False):
         return [tof.get_energy_amplitude(roi=roi) for tof in self._tof_list]
 
+    def get_energy_spectra_width(self, threshold_V=0.02, min_width_eV=2,
+                                 energy_offset=0, use_rel=False,
+                                 threshold_rel=0.5, roi=None):
+        return [tof.get_trace_bounds(threshold_V=threshold_V,
+                                     min_width_eV=min_width_eV,
+                                     energy_offset=energy_offset,
+                                     useRel=use_rel,
+                                     threshold_rel=threshold_rel,
+                                     roi=roi) for
+                tof in self._tof_list]
+
     def get_moments(self, domain='Time', roi=None):
         return [ tof.get_moments(domain=domain, roi=roi) for tof in
                 self._tof_list]

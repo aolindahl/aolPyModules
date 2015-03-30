@@ -546,14 +546,18 @@ class TofData(object):
                 .format(self._filter_method, _useWavelet)
 
 
-    def get_trace_bounds(self, threshold_V=0.02, min_width_eV=2, energy_offset=0,
-                         useRel=False, threshold_rel=0.5):
+    def get_trace_bounds(self, threshold_V=0.02, min_width_eV=2,
+                         energy_offset=0,
+                         useRel=False, threshold_rel=0.5,
+                         roi=None):
         if self._no_data:
-            return [np.nan for i in range(3)]
+            return [np.nan] * 3
+
+        amp = self.get_energy_amplitude(roi=roi)
 
         if useRel:
             threshold_temp = threshold_rel * \
-            np.max(self._energy_amplitude[np.isfinite(self._energy_amplitude)])
+            np.max(amp[np.isfinite(amp)])
             if threshold_temp < threshold_V:
                 return [np.nan for i in range(3)]
             else:
@@ -561,32 +565,32 @@ class TofData(object):
         nPoints = np.round(min_width_eV/self._energy_bin_size)
 
         min = 0
-        for i in range(1, self._energy_amplitude.size):
-            if self._energy_amplitude[i] < threshold_V:
+        for i in range(1, amp.size):
+            if amp[i] < threshold_V:
                 min = i
                 continue
             if i-min >= nPoints:
                 break
         else:
-            min = np.nan
+            return [np.nan] * 3
 
 
-        max = self._energy_amplitude.size - 1
-        for i in range(self._energy_amplitude.size-1, -1, -1):
-            if self._energy_amplitude[i] < threshold_V:
+        max = amp.size - 1
+        for i in range(amp.size-1, -1, -1):
+            if amp[i] < threshold_V:
                 max = i
                 continue
             if max-i >= nPoints:
                 break
-        else: max = np.nan
+        else:
+            return [np.nan] * 3
 
-        if min == 0 and max == self._energy_amplitude.size - 1:
-            min = np.nan
-            max = np.nan
+        if min == 0 and max == amp.size - 1:
+            return [np.nan] * 3
 
-        if not np.isnan(min):
-                min = self._energy_scale_eV[min] - energy_offset
-                max = self._energy_scale_eV[max] - energy_offset
+        #print 'min =', min, 'max =', max
+        min = self.get_energy_scale_eV(roi=roi)[min] - energy_offset
+        max = self.get_energy_scale_eV(roi=roi)[max] - energy_offset
 
         return min, max, threshold_V
 
