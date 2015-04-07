@@ -1,7 +1,7 @@
 import numpy as np
 import aolUtil
 
-offlineSource = 'exp=amoi0314:run=15'
+offline_source = 'exp=amoi0314:run=15'
 
 cbSourceString = "DetInfo(AmoETOF.0:Acqiris.0)"
 tMin_us =  1.48
@@ -10,12 +10,11 @@ baselineSubtraction = 'early'
 baselineEnd_us = 1.5
 
 # Define the basic configuration
-basicTofConfig = {
+basic_tof_config = {
     "acqCh": 10, 
     "baselineSubtraction":"early", # 'early', 'roi', 'none' 
     "baselineEnd_us": 1.5, 
-    "calibFile": ("/reg/neh/operator/amoopr/"
-		    + "amoi0114/psana/tofCalibs/tofCalibRetardation.json"), 
+    "calib_file": ("tof_calib_default.json"), 
     "filterMethod": "none", # wavelet, average, wienerDeconv 
     "filterWaveletLevels": 10, 
     "filterWinerSNR": 1,
@@ -54,39 +53,39 @@ acqCh = {
         15:15
         }
 
-timeRoi0_us_common = [1.522, 1.538]	#red
-timeRoi0_us = [timeRoi0_us_common]*16
+time_roi_0_us_common = [1.522, 1.538]	#red
+time_roi_0_us = [time_roi_0_us_common]*16
 
-timeRoi0Bg_us_common = [1.5, 1.51]
-timeRoi0Bg_us = [timeRoi0Bg_us_common]*16
+time_roi_0Bg_us_common = [1.5, 1.51]
+time_roi_0Bg_us = [time_roi_0Bg_us_common]*16
 
-timeRoi1_us_common = [1.515, 1.522]	#green
-timeRoi1_us = [timeRoi1_us_common]*16
+time_roi_1_us_common = [1.515, 1.522]	#green
+time_roi_1_us = [time_roi_1_us_common]*16
 
-energyRoi0_eV_common = [40, 60]
-energyRoi0_eV = [energyRoi0_eV_common]*16
+energy_roi_0_eV_common = [40, 60]
+energy_roi_0_eV = [energy_roi_0_eV_common]*16
 
 
 
 # Make copies of the basic configuration for each of the detectors
-tofConfigList = [None] * 16
+tof_config_list = [None] * 16
 
-def makeTofConfigList(online=True):
-    global tofConfigList
+def makeTofConfigList():
+    global tof_config_list
     for i in range(16):
-        tofConfigList[i] = basicTofConfig.copy()
-	tofConfigList[i]['calibFile'] = ('/reg/neh/operator/amoopr/'
-		    + 'amoi0114/psana/tofCalibs/tof{}Calib.json'.format(i+1)) 
-	if online:
-            tofConfigList[i]['acqCh'] = acqCh[i]
+        tof_config_list[i] = basic_tof_config.copy()
+	    # tof_config_list[i]['calib_file'] = ('/reg/neh/operator/amoopr/'
+	    #	    + 'amoi0114/psana/tofCalibs/tof{}Calib.json'.format(i+1)) 
+        tof_config_list[i]['calib_filte'] = 'tof_calib_default.json'
+        tof_config_list[i]['acqCh'] = acqCh[i]
 
-makeTofConfigList(online=True)
+makeTofConfigList()
 
 minE_eV = 50
 maxE_eV = 1000
-nEnergyBins = 256
+n_energy_bins= 256
 
-energyScaleBinLimits = np.linspace(minE_eV, maxE_eV, nEnergyBins + 1)
+energy_scale_eV = np.linspace(minE_eV, maxE_eV, 2*n_energy_bins + 1)[1::2]
 
 
 fitMask = np.array([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])

@@ -1,26 +1,44 @@
-import psana
+try:
+    import psana
+except:
+    print 'Using the module "lcls" without psana capabilities.'
+    psana = None
 import numpy as np
 
-
-EBeamTypeList = (psana.Bld.BldDataEBeamV0,
-        psana.Bld.BldDataEBeamV1,
-        psana.Bld.BldDataEBeamV2,
-        psana.Bld.BldDataEBeamV3,
-        psana.Bld.BldDataEBeamV4,
-        psana.Bld.BldDataEBeamV5,
-        psana.Bld.BldDataEBeamV6)
-
 _EBeamType = None
-_EBeamSource = psana.Source('BldInfo(EBeam)')
-
-feeTypeList = (psana.Bld.BldDataFEEGasDetEnergy,
-        psana.Bld.BldDataFEEGasDetEnergyV1)
-
 _feeType = None
-_feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
-
 _evt = None
 _currentFiducial = None
+
+if psana is not None:
+    EBeamTypeList = (psana.Bld.BldDataEBeamV0,
+            psana.Bld.BldDataEBeamV1,
+            psana.Bld.BldDataEBeamV2,
+            psana.Bld.BldDataEBeamV3,
+            psana.Bld.BldDataEBeamV4,
+            psana.Bld.BldDataEBeamV5,
+            psana.Bld.BldDataEBeamV6)
+            
+    _EBeamSource = psana.Source('BldInfo(EBeam)')
+
+    feeTypeList = (psana.Bld.BldDataFEEGasDetEnergy,
+                   psana.Bld.BldDataFEEGasDetEnergyV1)
+
+    _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
+
+    _evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
+    _evrType = psana.EvrData.DataV3
+    evrTypeList = (psana.EvrData.DataV3)
+else:
+    EBeamTypeList = None
+    _EBeamSource = None
+    feeTypeList = None
+    _feeSoutce = None
+    _evrSource = None
+    _evrType = None
+    evrTypeList = None
+
+
 
 def setEvent(evt, verbose=False):
     global _evt
@@ -189,10 +207,6 @@ def getEventTime(evt=None, verbose=False):
 
 ##############################
 # EVR functionality
-
-_evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
-_evrType = psana.EvrData.DataV3
-evrTypeList = (psana.EvrData.DataV3)
 
 def getEvrObject(evt=None, evrSource=_evrSource, verbose=False):
     if verbose:
