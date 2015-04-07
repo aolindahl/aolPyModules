@@ -473,6 +473,8 @@ class TofData(object):
 
     def get_energy_amplitude(self, roi=None):
         if self._no_data:
+            if self._verbose:
+                print 'No data in TofData object.'
             return None
         if roi!=None and self._energy_roi_slice!=None:
             return self._energy_amplitude[self._energy_roi_slice[roi]]

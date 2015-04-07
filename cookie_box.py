@@ -141,8 +141,10 @@ class CookieBox:
         if verbose:
             print 'Make the list of TofData objects.'
         self._tof_list = []
+        verbose_first = verbose
         for conf in config.tof_config_list:
-            self._tof_list.append(tof.TofData(conf, verbose=verbose))
+            self._tof_list.append(tof.TofData(conf, verbose=verbose_first))
+            verbose_first = False
 
 
         self._phi_deg = _angles_deg
