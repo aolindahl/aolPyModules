@@ -295,21 +295,19 @@ class TofData(object):
                 ['time_roi_{}_us', 'energy_roi_{}_eV']):
             for iRoi in range(4):
                 roi = roiBase.format(iRoi)
-                roi_bg = roiBase.format('{}_bg'.format(iRoi))
                 if self._verbose:
                     print 'Looking for {}.'.format(roi)
                 if roi in self._config:
-                    if self._verbose:
-                        print '{} found'.format(roi)
-                        print self._config[roi]
                     self.set_base_roi(
-                            min = self._config[roi][0],
-                            max = self._config[roi][1],
-                            roi = iRoi,
-                            domain = domain)
-                if roi_bg in self._config:
-                    pass
-
+                        min = self._config[roi][0],
+                        max = self._config[roi][1],
+                        roi = iRoi,
+                        domain = domain)
+                    if self._verbose:
+                        print '{} found'.format(roi), 
+                        print self._config[roi],
+                        print self._time_roi_slice[iRoi]
+                
 
         # Make a backgeound slice
         if self._verbose:
@@ -449,6 +447,9 @@ class TofData(object):
     def get_time_scale_us(self, roi=None):
         if self._no_scales:
             return None
+        if self._verbose:
+            print 'TofData._time_roi_slice =', self._time_roi_slice
+            print 'TofData._time_scale_us =', self._time_scale_us
         if roi!=None and self._time_roi_slice!=None:
             return self._time_scale_us[self._time_roi_slice[roi]]
         return self._time_scale_us
