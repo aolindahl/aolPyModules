@@ -166,9 +166,9 @@ class CookieBox:
                              retardation=retardation)
 
 
-    def setBaselineSubtractionAveraging(self, weightLast):
+    def set_baseline_subtraction_averaging(self, weightLast):
         for tof in self._tof_list:
-            tof.setBaselineSubtractionAveraging(weightLast)
+            tof.set_baseline_subtraction_averaging(weightLast)
 
     def set_raw_data(self, evt, verbose=False, newDataFactor=1):
         for tof in self._tof_list:
