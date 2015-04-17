@@ -23,10 +23,10 @@ class struct(object):
             setattr(self, k, v)
 
     def __repr__(self):
-        s = 'aolUtil.struct( {'
+        s = 'aolUtil.struct({'
         for k,v in self.__dict__.iteritems():
             s += '\n\t"{}":{}'.format(k,v)
-        s += ' })'
+        s += '})'
         return s
 
 def limits_from_centers(centers):
