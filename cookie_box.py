@@ -279,9 +279,9 @@ class CookieBox:
                 np.random.normal(1, 0.05, (16,)) )
         #factors = model_function(params, self.getAngles())
         for factor, tof in zip(factors, self._tof_list):
-            tof._timeAmplitude *= factor
+            tof._time_amplitude *= factor
             #tof._timeAmplitude_filtered *= factor
-            tof._energyAmplitude *= factor
+            tof._energy_amplitude *= factor
 
         return params
         
