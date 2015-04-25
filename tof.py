@@ -38,7 +38,7 @@ def get_acqiris_scales(env, source_string, channel, verbose=False):
     if time_scale_us is None:
         print ('WARNING: No acqiris configuration obtained,' +
                 ' no scales aquired.')
-        return None, 1, 0
+        return np.array(()), 1, 0
     
     if verbose:
         print 'Get the vertical scaling of the acqiris channel.'
@@ -151,7 +151,7 @@ def get_acqiris_data(evt, source_string, channel, scaling=1., offset=0,
     raw_data = simplepsana.get_acqiris_waveform(evt, source_string,channel,
                                                 verbose=verbose)
     if raw_data is None:
-        return None
+        return np.array(())
 
     invert_factor = -1. if invert else 1.
     return invert_factor * (raw_data[selection] * scaling - offset)
@@ -446,7 +446,7 @@ class TofData(object):
 
     def get_time_scale_us(self, roi=None):
         if self._no_scales:
-            return None
+            return np.array(())
         if self._verbose:
             print 'TofData._time_roi_slice =', self._time_roi_slice
             print 'TofData._time_scale_us =', self._time_scale_us
@@ -460,14 +460,14 @@ class TofData(object):
         #    print 'Has', 'no' if self._no_data else None, 'data.'
         #    print self._time_amplitude
         if self._no_data:
-            return None
+            return np.array(())
         if (roi is not None) and (self._time_roi_slice is not None):
             return self._time_amplitude[self._time_roi_slice[roi]]
         return self._time_amplitude
 
     def get_time_amplitude_filtered(self, roi=None):
         if self._no_data:
-            return None
+            return np.array(())
         if roi!=None: #and self._time_roi_slice!=None:
             return self._time_amplitude_filtered[self._time_roi_slice[roi]]
         return self._time_amplitude_filtered
@@ -476,21 +476,21 @@ class TofData(object):
         if self._no_data:
             if self._verbose:
                 print 'No data in TofData object.'
-            return None
+            return np.array(())
         if roi!=None and self._energy_roi_slice!=None:
             return self._energy_amplitude[self._energy_roi_slice[roi]]
         return self._energy_amplitude
 
     def get_energy_scale_eV(self, roi=None):
         if self._no_scales:
-            return None
+            return np.array(())
         if roi!=None and self._energy_roi_slice!=None:
             return self._energy_scale_eV[self._energy_roi_slice[roi]]
         return self._energy_scale_eV
 
     def get_raw_energy_scale(self, roi=None):
         if self._no_scales:
-            return None
+            return np.array(())
         if roi!=None and self._time_roi_slice!=None:
             return self._energy_scale_eV[self._time_roi_slice[roi]]
         return self._raw_energy_scale_eV
