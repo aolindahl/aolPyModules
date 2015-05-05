@@ -9,11 +9,15 @@ import numpy as np
 try:
     import psana
 except ImportError as exc:
-    raise ImportError('\n\t'.join([
+    print ''.join([
         'Import of module "{}" failed due to an exception:'.format(__name__),
         '"{}"'.format(exc.message),
-        'when attempting to "import psana".'
-        ]))
+        'when attempting to "import psana".'])
+#    raise ImportWarning('\n\t'.join([
+#        'Import of module "{}" failed due to an exception:'.format(__name__),
+#        '"{}"'.format(exc.message),
+#        'when attempting to "import psana".'
+#        ]))
 
 
 def get_data_source(source_string, verbose=False):

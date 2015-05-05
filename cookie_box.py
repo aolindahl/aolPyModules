@@ -13,7 +13,7 @@ import simplepsana
 _source_dict = {}
 def get_source(source_string):
     global _source_dict
-    if source_tring not in _source_dict:
+    if source_string not in _source_dict:
         _source_dict[source_string] = psana.Source(source_string)
     return _source_dict[source_string]
 
