@@ -28,6 +28,10 @@ if psana is not None:
 
     _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
 
+    _feeFuncs = [f_11_ENRC, f_12_ENRC,
+                 f_21_ENRC, f_22_ENRC,
+                 f_63_ENRC, f_63_ENRC]
+
     _evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
     _evrType = psana.EvrData.DataV3
     evrTypeList = (psana.EvrData.DataV3)
@@ -149,16 +153,13 @@ def _determineEBeamType(evt=None, verbose=False):
     return _EBeamType
 
 # fee
-def getPulseEnergy_mJ(evt=None, verbose=False):
+def getPulseEnergy_mJ(evt=None, nValues=4, verbose=False):
     if not setEvent(evt):
         return np.nan
     fee = getFeeObject(_evt, verbose)
     if fee is None:
-        return np.array([np.nan for i in range(4)])
-    return np.array( [ fee.f_11_ENRC(),
-            fee.f_12_ENRC(),
-            fee.f_21_ENRC(),
-            fee.f_22_ENRC()] )
+        return np.array([np.nan for i in range(nValues)])
+    return np.array([fee.func() for func in _feeFuncs[:nValues]])
 
 def getFeeObject(evt, verbose=False):
     if _feeType is None:
@@ -230,7 +231,7 @@ def _determineEvrType(evt, verbose=False):
             print 'Trying {};'.format(type),
         data = evt.get(type, _evrSource)
         if data is not None:
-            _feeType = type
+            _evrType = type
             if verbose:
                 print ' correct.'
                 break
