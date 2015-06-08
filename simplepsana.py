@@ -19,6 +19,8 @@ except ImportError as exc:
 #        'when attempting to "import psana".'
 #        ]))
 
+def allow_corrupt_epics():
+    psana.setOption('psana.allow-corrupt-epics', True)
 
 def get_data_source(source_string, verbose=False):
     if verbose:
@@ -109,9 +111,9 @@ def get_acqiris_signal_scaling(env, source_string, channel, verbose=False):
     # convenience reference
     vert_scale = acqiris_config.vert()[channel]
     # The vertical scale information is given as the full scale voltage over
-    # all the 2**16 bits.
+    # all the 2**12 bits but they need to be shifted.
     # Here the voltage per bit is calculated
-    scaling = vert_scale.fullScale() * 2**-16
+    scaling = vert_scale.fullScale() * 2**-12
     # The scale also has an offset in voltage
     offset = vert_scale.offset()
 
@@ -145,7 +147,7 @@ def get_acqiris_waveform(evt, source_string, channel, segment=0, verbose=False):
 
     if verbose:
         print '\tReturn waveform.'
-    return acqiris_data.data(channel).waveforms()[segment]
+    return acqiris_data.data(channel).waveforms()[segment] / 16
 
 if __name__ == '__main__':
     import sys
