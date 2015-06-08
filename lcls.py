@@ -51,7 +51,7 @@ def setEvent(evt, verbose=False):
     global _currentFiducial
 
     if verbose:
-        print 'Trying to det event.'
+        print 'Trying to set event.'
 
     # If no event is given
     if evt is None:
@@ -84,9 +84,7 @@ def setEvent(evt, verbose=False):
 
 # e-beam data
 def getEBeamEnergyL3_MeV(evt=None, verbose=False):
-    if not setEvent(evt, verbose):
-        return np.nan
-    EBeamObject = getEBeamObject(verbose=verbose)
+    EBeamObject = getEBeamObject(evt=evt, verbose=verbose)
     if EBeamObject == None:
         return np.nan
     return EBeamObject.ebeamL3Energy()
@@ -97,10 +95,17 @@ def getEBeamEnergyBC2_MeV(evt=None, verbose=False):
     EBeamObject = getEBeamObject(verbose=verbose)
     if EBeamObject == None:
         return np.nan
-    # The BC2 energy is calculated using the dispersion. The vispersion
-    # value for BC2 is -3.647 mm at the nominal beam energy of 5 GeV [Email
+    # The BC2 energy is calculated using the dispersion. The dispersion
+    # value for BC2 is -0.3647 m at the nominal beam energy of 5 GeV [Email
     # from Timothy Maxwell to Anton Lindahl on June 2 2014]
-    return ( EBeamObject.ebeamEnergyBC2() / -364.7 + 1 ) * 5e3
+    return (getEBeamPosOffsetBC2_mm / -364.7 + 1) * 5e3
+
+def getEBeamPosOffsetBC2_mm(evt=None, verbose=False):
+    EBeamObject = getEBeamObject(verbose=verbose)
+    if EBeamObject == None:
+        return np.nan
+    return EBeamObject.ebeamEnergyBC2()
+
 
 def getEBeamCharge_nC(evt=None, verbose=False):
     if not setEvent(evt):
@@ -159,7 +164,8 @@ def getPulseEnergy_mJ(evt=None, nValues=4, verbose=False):
     fee = getFeeObject(_evt, verbose)
     if fee is None:
         return np.array([np.nan for i in range(nValues)])
-    return np.array([getattr(fee, func)() for func in _feeFuncs[:nValues]])
+    return np.array([getattr(fee, func)() if hasattr(fee, func) else 0.0
+                     for func in _feeFuncs[:nValues]])
 
 def getFeeObject(evt, verbose=False):
     if _feeType is None:
@@ -198,14 +204,14 @@ def getEventFiducial(evt=None, verbose=False):
         return 0
     return id.fiducials()
 
-def getEventTime(evt=None, verbose=False):
+def getEventTime(evt=None, offset=0, verbose=False):
     if not setEvent(evt, verbose):
         return np.nan
     id = getIdObject(_evt, verbose)
     if id == None:
         return np.nan
     time =  id.time()
-    return time[0] + time[1] * 1e-9
+    return (time[0] - offset) + time[1] * 1e-9
 
 
 ##############################
