@@ -28,9 +28,9 @@ if psana is not None:
 
     _feeSource = psana.Source('BldInfo(FEEGasDetEnergy)')
 
-    _feeFuncs = [f_11_ENRC, f_12_ENRC,
-                 f_21_ENRC, f_22_ENRC,
-                 f_63_ENRC, f_63_ENRC]
+    _feeFuncs = ['f_11_ENRC', 'f_12_ENRC',
+                 'f_21_ENRC', 'f_22_ENRC',
+                 'f_63_ENRC', 'f_63_ENRC']
 
     _evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
     _evrType = psana.EvrData.DataV3
@@ -159,7 +159,7 @@ def getPulseEnergy_mJ(evt=None, nValues=4, verbose=False):
     fee = getFeeObject(_evt, verbose)
     if fee is None:
         return np.array([np.nan for i in range(nValues)])
-    return np.array([fee.func() for func in _feeFuncs[:nValues]])
+    return np.array([getattr(fee, func)() for func in _feeFuncs[:nValues]])
 
 def getFeeObject(evt, verbose=False):
     if _feeType is None:
