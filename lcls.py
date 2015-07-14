@@ -9,6 +9,7 @@ _EBeamType = None
 _feeType = None
 _evt = None
 _currentFiducial = None
+_phaseCavityType = None
 
 if psana is not None:
     EBeamTypeList = (
@@ -35,6 +36,8 @@ if psana is not None:
     _evrSource = psana.Source('DetInfo(NoDetector.0:Evr.0)')
     _evrType = psana.EvrData.DataV3
     evrTypeList = (psana.EvrData.DataV3)
+
+    _phaseCavitySource = psana.Source('BldInfo(PhaseCavity)')
 else:
     EBeamTypeList = None
     _EBeamSource = None
@@ -157,6 +160,32 @@ def _determineEBeamType(evt=None, verbose=False):
 
     return _EBeamType
 
+###################
+# Phase cavity
+def getPhaseCavityTimes(evt=None, verbose=False):
+    if not setEvent(evt, verbose):
+        return np.array([np.nan] * 2)
+    ph = getPhaseCavityObject(verbose=verbose)
+    if ph is None:
+        return np.array([np.nan] * 2)
+    return np.array([ph.fitTime1(), ph.fitTime2()])
+
+# setup
+def getPhaseCavityObject(evt=None, verbose=False):
+    if not setEvent(evt, verbose):
+        return None
+    if _phaseCavityType is None:
+        _determinePhaseCavityType(evt, verbose)
+    try:
+        return _evt.get(_phaseCavityType, _phaseCavitySource)
+    except:
+        return None
+
+def _determinePhaseCavityType(evt=None, verbose=False):
+    global _phaseCavityType
+    _phaseCavityType = psana.Bld.BldDataPhaseCavity
+
+##############################
 # fee
 def getPulseEnergy_mJ(evt=None, nValues=4, verbose=False):
     if not setEvent(evt):
