@@ -5,7 +5,7 @@ from aolUtil import struct
 import sys
 import random
 import lmfit
-from BurningDetectors_V6 import projector
+from burning_detectors import projector
 import simplepsana
 
 # A bunch of methods to take care of the cookie box data

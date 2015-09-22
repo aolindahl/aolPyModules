@@ -1,10 +1,8 @@
-#from setupEnvironment import *
 import numpy as np
 from configuration import loadConfiguration, load_configuration_dict
 import time
 import wiener
 from scipy.sparse import coo_matrix
-import sys
 
 import simplepsana
 import aolUtil
@@ -16,14 +14,16 @@ if _useWavelet:
     except:
         print 'Wavelet filtering not avaliable. pywt not found.'
         _useWavelet = False
-
-m_e_eV = 0.510998928e6 # http://physics.nist.gov/cgi-bin/cuu/Value?me 2014-04-21
-c_0_mps = 299792458 # http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=universal_in! 2014-04-21
+# http://physics.nist.gov/cgi-bin/cuu/Value?me 2014-04-21
+m_e_eV = 0.510998928e6
+# http://physics.nist.gov/cgi-bin/cuu/Value?c|search_for=universal_in!
+# 2014-04-21
+c_0_mps = 299792458.
 
 
 def edges_from_centers(centers):
     step = np.diff(centers).mean()
-    return np.concatenate([centers - step/s, centers[-1] + step/2])
+    return np.concatenate([centers - step/2, centers[-1] + step/2])
 
 
 def get_acqiris_scales(env, source_string, channel, verbose=False):
@@ -34,23 +34,23 @@ def get_acqiris_scales(env, source_string, channel, verbose=False):
         print '\tenv =', env
         print '\tsource_string =', source_string
     time_scale_us = simplepsana.get_acqiris_time_scale_us(env, source_string,
-                                                          verbose = verbose)
+                                                          verbose=verbose)
     if time_scale_us is None:
         print ('WARNING: No acqiris configuration obtained,' +
-                ' no scales aquired.')
+               ' no scales aquired.')
         return None, 1, 0
-    
+
     if verbose:
         print 'Get the vertical scaling of the acqiris channel.'
     vert_scaling_V, vert_offset_V = \
         simplepsana.get_acqiris_signal_scaling(env, source_string, channel,
-                                               verbose = verbose)
+                                               verbose=verbose)
 
     return time_scale_us, vert_scaling_V, vert_offset_V
 
 
-def energy_from_time_physical(time, D_mm=None, prompt_us=None, t_offset_us=0,
-                     E_offset_eV=0, verbose=False):
+def energy_from_time_physical(time, D_mm=600, prompt_us=1.5, t_offset_us=0,
+                              E_offset_eV=0, verbose=False):
     # The conversion is given by:
     # E = D^2 m_e 10^6 / ( 2 c_0^2 (t - t_p)^2 ) + E0,
     # where:
@@ -66,18 +66,18 @@ def energy_from_time_physical(time, D_mm=None, prompt_us=None, t_offset_us=0,
     if verbose:
         print 'In tof.energy_from_time_physical()'
     return (D_mm**2 * m_e_eV * 1e6 /
-        (c_0_mps**2 * 2 * (time - prompt_us - t_offset_us)**2) + E_offset_eV)
+            (c_0_mps**2 * 2 * (time - prompt_us - t_offset_us)**2) +
+            E_offset_eV)
 
 
-
-def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
-                                  D_mm=None, prompt_us=None, t_offset_us=0,
-                                  E_offset_eV=0):
+def get_time_to_energy_conversion(time_scale_us, energy_scale_eV,
+                                  verbose=False,
+                                  D_mm=None, prompt_us=None,
+                                  t_offset_us=0, E_offset_eV=0):
     if verbose:
         print 'In "tof.get_energy_scale_and conversion()."'
     # Get basic data about the time scale
     dt = np.diff(time_scale_us).mean()
-    t0 = time_scale_us[0]
     num_time_bins = len(time_scale_us)
     # Calculate bin edges in the time domain
     time_scale_t_edges = aolUtil.limits_from_centers(time_scale_us)
@@ -90,23 +90,22 @@ def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
     if verbose:
         print 'Time scale E edges are:', time_scale_E_edges
     # Number of energy bins
-    #print energy_scale_eV
     num_energy_bins = len(energy_scale_eV)
     # Energy bin size
     dE = np.diff(energy_scale_eV).mean()
     # energy scale bin limits
     energy_scale_E_edges = aolUtil.limits_from_centers(energy_scale_eV)
-    
+
     # Make matrixes out of the edges vectors in energy domain
-    mat_time_E = np.concatenate([time_scale_E_edges.reshape(1,-1)] *
-        num_energy_bins)
-    mat_energy_E= np.concatenate([energy_scale_E_edges.reshape(-1,1)] *
-        num_time_bins, axis=1)
+    mat_time_E = np.concatenate([time_scale_E_edges.reshape(1, -1)] *
+                                num_energy_bins)
+    mat_energy_E = np.concatenate([energy_scale_E_edges.reshape(-1, 1)] *
+                                  num_time_bins, axis=1)
 
     # Compute the start and end energies for the conversion from the time axis
     # to energy axis
-    high_E_limit = ( np.minimum( mat_time_E[:,:-1], mat_energy_E[1:,:] ) )
-    low_E_limit = ( np.maximum( mat_time_E[:,1:], mat_energy_E[:-1,:] ) )
+    high_E_limit = (np.minimum(mat_time_E[:, :-1], mat_energy_E[1:, :]))
+    low_E_limit = (np.maximum(mat_time_E[:, 1:], mat_energy_E[:-1, :]))
     # Only where the high energy is more than the low energy the conversion
     # makes anny sense
     I = low_E_limit < high_E_limit
@@ -122,8 +121,8 @@ def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
     # divided by the energy bin size in order to return to an amplitude.
     # Summation over all time bins is performed in the matrix multiplication
     # of the conversion matrix with the time domain amplitude vector.
-    temp_conversion_mat[I] = (dt * (high_E_limit[I] - low_E_limit[I]) / 
-            ( mat_time_E[:,:-1] - mat_time_E[:,1:] )[I] / dE)
+    temp_conversion_mat[I] = (dt * (high_E_limit[I] - low_E_limit[I]) /
+                              (mat_time_E[:, :-1] - mat_time_E[:, 1:])[I] / dE)
     # The conversion matrix is highly sparse, thus make a sparse matrix to
     # spped up the calculationss
     conversion_mat = coo_matrix(temp_conversion_mat)
@@ -148,7 +147,7 @@ def get_time_to_energy_conversion(time_scale_us, energy_scale_eV, verbose=False,
 
 def get_acqiris_data(evt, source_string, channel, scaling=1., offset=0,
                      invert=True, selection=slice(None), verbose=False):
-    raw_data = simplepsana.get_acqiris_waveform(evt, source_string,channel,
+    raw_data = simplepsana.get_acqiris_waveform(evt, source_string, channel,
                                                 verbose=verbose)
     if raw_data is None:
         return None
